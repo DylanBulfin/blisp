@@ -1,5 +1,3 @@
-use std::mem;
-
 use crate::error::{InterpretError, InterpreteResult};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -277,10 +275,11 @@ pub enum Token {
     EOF,
 }
 
-impl Default for Token {
-    fn default() -> Self {
-        // This implementation is for convenience, it allows me to use mem::take()
-        Self::UnitLiteral
+impl Token {
+    /// Steals a Token and replaces it with UnitLiteral. This is to allow me to remove a
+    /// Token from slices easily
+    pub fn take(&mut self) -> Self {
+        std::mem::replace(self, Self::UnitLiteral)
     }
 }
 

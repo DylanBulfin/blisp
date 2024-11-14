@@ -1,4 +1,3 @@
-
 use crate::error::{InterpretError, InterpreteResult};
 
 use crate::{
@@ -196,7 +195,7 @@ fn parse_val(tokens: &mut [Token]) -> ParseResult {
         }
         // terminals specifies that we want to leave out LBrack and LParen
         val_pattern!(terminals) => {
-            let child = Node::Leaf(std::mem::take(&mut tokens[0]).try_into()?);
+            let child = Node::Leaf(tokens[0].take().try_into()?);
             let node = rule_node_helper!(Val, child);
 
             Ok((node, 1))

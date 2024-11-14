@@ -8,17 +8,17 @@
 macro_rules! import {
     (lexer) => {
         #[allow(unused_imports)]
-        use $crate::blisp::lexer::*;
+        use $crate::lexer::*;
     };
     (parser) => {
         #[allow(unused_imports)]
-        use $crate::blisp::parser::*;
+        use $crate::parser::*;
     };
     (*) => {
         #[allow(unused_imports)]
-        use $crate::blisp::lexer::*;
+        use $crate::lexer::*;
         #[allow(unused_imports)]
-        use $crate::blisp::parser::*;
+        use $crate::parser::*;
     };
 }
 
@@ -34,7 +34,7 @@ macro_rules! assert_fails {
 // characters, etc)
 macro_rules! assert_fails_lexer {
     ($testname:ident, $input:literal $(;$message:literal)?) => {
-        $crate::blisp::macros::import!(lexer);
+        $crate::macros::import!(lexer);
         assert_fails!($testname => {
             if let Err(e) = tokenize($input.chars().collect()) {
                 panic!("{}", e);
@@ -46,7 +46,7 @@ macro_rules! assert_fails_lexer {
 // tokens, etc)
 macro_rules! assert_fails_parser {
     ($testname:ident, $input:literal $(;$message:literal)?) => {
-        $crate::blisp::macros::import!(*);
+        $crate::macros::import!(*);
         assert_fails!($testname => {
             if let Ok(tokens) = tokenize($input.chars().collect()) {
                 if let Err(e) = parse_prog(tokens.as_slice()) {
@@ -84,13 +84,13 @@ macro_rules! val_pattern {
 macro_rules! rule_node_helper {
     ($rule:ident, $child:ident) => {
         {
-            $crate::blisp::macros::import!(parser);
+            $crate::macros::import!(parser);
             Node::Rule(RuleNodeData::new(Rule::$rule, vec![$child]))
         }
     };
     ($rule:ident, [$($child:expr),+]) => {
         {
-            $crate::blisp::macros::import!(parser);
+            $crate::macros::import!(parser);
             Node::Rule(RuleNodeData::new(
                  Rule::$rule,
                  vec![$($child,)+],
@@ -113,7 +113,7 @@ macro_rules! val_node_helper {
 // Val (such as those created with above macro)
 macro_rules! list_node_helper {
     [$($item:expr),+] => {{
-        $crate::blisp::macros::import!(*);
+        $crate::macros::import!(*);
 
         let mut vec: Vec<Node> = [$($item),+].to_vec();
         let mut node = rule_node_helper!(ListBody, [vec.pop().unwrap()]);
@@ -134,7 +134,7 @@ macro_rules! list_node_helper {
 // Creates a FuncCall node with the specified function name and arguments
 macro_rules! func_call_node_helper {
     ($func:ident, [$($arg:expr),+]) => {{
-        $crate::blisp::macros::import!(*);
+        $crate::macros::import!(*);
 
         let mut vec: Vec<Node> = [$($arg),+].to_vec();
         let mut node = rule_node_helper!(Args, [vec.pop().unwrap()]);
@@ -206,10 +206,7 @@ macro_rules! list_value_helper {
 mod tests {
     use std::rc::Rc;
 
-    use crate::{
-        blisp::{lexer::Token, parser::Node},
-        error::InterpreTestResult,
-    };
+    use crate::{error::InterpreTestResult, lexer::Token, parser::Node};
 
     use super::*;
 

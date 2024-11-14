@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
 use crate::error::{InterpretError, InterpreteResult};
 
-use super::{
+use crate::{
     lexer::{NumLiteral, ReservedIdent, Token, Type},
     macros::{rule_node_helper, val_pattern},
 };

@@ -4,8 +4,9 @@ use std::{
 };
 
 use crate::{
-    blisp::{functions::eval_function, macros::leaf_node_pattern},
     error::{InterpreTestResult, InterpretError, InterpreteResult},
+    functions::eval_function,
+    macros::leaf_node_pattern,
 };
 
 use super::{
@@ -731,8 +732,7 @@ fn check_list_type(vec: Vec<&Value>) -> InterpreteResult<Type> {
 mod tests {
 
     use crate::{
-        blisp::{lexer::tokenize, macros::assert_fails, parser::parse_prog},
-        error::InterpreTestResult,
+        error::InterpreTestResult, lexer::tokenize, macros::assert_fails, parser::parse_prog,
     };
 
     use super::*;

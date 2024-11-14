@@ -1,9 +1,7 @@
 use crate::{
-    blisp::{
-        interpreter::{AbstractType, ValueData},
-        lexer::Type,
-    },
     error::InterpreteResult,
+    interpreter::{AbstractType, ValueData},
+    lexer::Type,
 };
 
 use super::{

@@ -1,12 +1,15 @@
+use std::collections::VecDeque;
+
 use crate::error::{InterpretError, InterpreteResult};
 
+use crate::macros::{peek_tok_safe, pop_tok_safe};
 use crate::{
     lexer::{NumLiteral, ReservedIdent, Token, Type},
     macros::{rule_node_helper, val_pattern},
 };
 
 // usize is the number of tokens "consumed"
-type ParseResult = InterpreteResult<(Node, usize)>;
+type ParseResult = InterpreteResult<Node>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Rule {
@@ -83,58 +86,47 @@ impl TryFrom<Token> for ParseToken {
     }
 }
 
-pub fn parse_prog(tokens: &mut [Token]) -> ParseResult {
-    let (child, cnt) = parse_expr(tokens)?;
+pub fn parse_prog(tokens: &mut VecDeque<Token>) -> ParseResult {
+    let child = parse_expr(tokens)?;
     let node = rule_node_helper!(Prog, child);
 
-    if tokens
-        .get(cnt)
-        .ok_or("Unexpected end of token stream before EOF")?
-        != &Token::EOF
-    {
-        Err(format!("Unexpected token where EOF was expected: {:?}", tokens[cnt]).into())
-    } else {
-        Ok((node, cnt))
+    match pop_tok_safe!(tokens, "Prog") {
+        Token::EOF => Ok(node),
+        t => Err(format!("Unexpected token where EOF was expected: {:?}", t).into()),
     }
 }
 
-fn parse_expr(tokens: &mut [Token]) -> ParseResult {
-    if tokens[0] == Token::LParen {
-        let (child, cnt) = parse_expr_body(&mut tokens[1..])?;
-        let node = rule_node_helper!(Expr, [child]);
+fn parse_expr(tokens: &mut VecDeque<Token>) -> ParseResult {
+    match pop_tok_safe!(tokens, "Expr") {
+        Token::LParen => {
+            let child = parse_expr_body(tokens)?;
+            let node = rule_node_helper!(Expr, [child]);
 
-        if tokens[cnt + 1] == Token::RParen {
-            Ok((node, cnt + 2))
-        } else {
-            Err(format!(
-                "Expected ) while parsing expression, encountered {:?}",
-                tokens[cnt + 1]
-            )
-            .into())
+            match pop_tok_safe!(tokens, "Expr") {
+                Token::RParen => Ok(node),
+                t => {
+                    Err(format!("Expected ) while parsing expression, encountered {:?}", t).into())
+                }
+            }
         }
-    } else {
-        Err(format!(
-            "Expected ( while parsing expression, encountered {:?}",
-            tokens[0]
-        )
-        .into())
+        t => Err(format!("Expected ( while parsing expression, encountered {:?}", t).into()),
     }
 }
 
-fn parse_expr_body(tokens: &mut [Token]) -> ParseResult {
-    match &mut tokens[0] {
+fn parse_expr_body(tokens: &mut VecDeque<Token>) -> ParseResult {
+    match peek_tok_safe!(tokens, "ExprBody") {
         Token::Reserved(_) => {
-            let (child, cnt) = parse_func_call(&mut tokens[0..])?;
+            let child = parse_func_call(tokens)?;
             let node = rule_node_helper!(ExprBody, child);
 
-            Ok((node, cnt))
+            Ok(node)
         }
         val_pattern!() => {
             // We have <Val> and need to process it
-            let (child, cnt) = parse_val(&mut tokens[0..])?;
+            let child = parse_val(tokens)?;
             let node = rule_node_helper!(ExprBody, child);
 
-            Ok((node, cnt))
+            Ok(node)
         }
         t => Err(format!(
             "Unexpected token encountered while parsing expression body: {:?}",
@@ -144,32 +136,27 @@ fn parse_expr_body(tokens: &mut [Token]) -> ParseResult {
     }
 }
 
-fn parse_func_call(tokens: &mut [Token]) -> ParseResult {
-    let func = tokens[0].assert_reserved()?;
+fn parse_func_call(tokens: &mut VecDeque<Token>) -> ParseResult {
+    let func = pop_tok_safe!(tokens, "FuncCall").assert_reserved()?;
 
-    let (child, cnt) = parse_args(&mut tokens[1..])?;
+    let child = parse_args(tokens)?;
     let node = rule_node_helper!(FuncCall, [Node::Leaf(ParseToken::from(func)), child]);
 
-    Ok((node, cnt + 1))
+    Ok(node)
 }
 
-fn parse_args(tokens: &mut [Token]) -> ParseResult {
-    match &mut tokens[0] {
+fn parse_args(tokens: &mut VecDeque<Token>) -> ParseResult {
+    match peek_tok_safe!(tokens, "Args") {
         val_pattern!() => {
             // We have <Val> and need to process it
-            let (val, val_cnt) = parse_val(tokens)?;
+            let val = parse_val(tokens)?;
 
-            Ok(
-                if tokens.get(val_cnt).ok_or::<InterpretError>(
-                    "Unexpectedly reached end of input while parsing arguments".into(),
-                )? == &Token::RParen
-                {
-                    (rule_node_helper!(Args, val), val_cnt)
-                } else {
-                    let (tail, tail_cnt) = parse_args(&mut tokens[val_cnt..])?;
-                    (rule_node_helper!(Args, [val, tail]), val_cnt + tail_cnt)
-                },
-            )
+            Ok(if peek_tok_safe!(tokens, "Args") == &Token::RParen {
+                rule_node_helper!(Args, val)
+            } else {
+                let tail = parse_args(tokens)?;
+                rule_node_helper!(Args, [val, tail])
+            })
         }
         t => Err(format!(
             "Unexpected token encountered while parsing arguments: {:?}",
@@ -179,67 +166,57 @@ fn parse_args(tokens: &mut [Token]) -> ParseResult {
     }
 }
 
-fn parse_val(tokens: &mut [Token]) -> ParseResult {
-    match &mut tokens[0] {
+fn parse_val(tokens: &mut VecDeque<Token>) -> ParseResult {
+    match peek_tok_safe!(tokens, "Val") {
         Token::LBrack => {
-            let (child, cnt) = parse_list(tokens)?;
+            let child = parse_list(tokens)?;
             let node = rule_node_helper!(Val, child);
 
-            Ok((node, cnt))
+            Ok(node)
         }
         Token::LParen => {
-            let (child, cnt) = parse_expr(tokens)?;
+            let child = parse_expr(tokens)?;
             let node = rule_node_helper!(Val, child);
 
-            Ok((node, cnt))
+            Ok(node)
         }
         // terminals specifies that we want to leave out LBrack and LParen
         val_pattern!(terminals) => {
-            let child = Node::Leaf(tokens[0].take().try_into()?);
+            let child = Node::Leaf(pop_tok_safe!(tokens, "Val").try_into()?);
             let node = rule_node_helper!(Val, child);
 
-            Ok((node, 1))
+            Ok(node)
         }
-        _ => Err(format!("Unexpected token while parsing value: {:?}", tokens[0]).into()),
+        t => Err(format!("Unexpected token while parsing value: {:?}", t).into()),
     }
 }
 
-fn parse_list(tokens: &mut [Token]) -> ParseResult {
-    if tokens[0] == Token::LBrack {
-        let (child, cnt) = parse_list_body(&mut tokens[1..])?;
+fn parse_list(tokens: &mut VecDeque<Token>) -> ParseResult {
+    if pop_tok_safe!(tokens, "List") == Token::LBrack {
+        let child = parse_list_body(tokens)?;
         let node = rule_node_helper!(List, [child]);
 
-        if tokens[cnt + 1] == Token::RBrack {
-            Ok((node, cnt + 2))
-        } else {
-            Err(format!(
-                "Expected ] while parsing list, encountered {:?}",
-                tokens[cnt + 1]
-            )
-            .into())
+        match pop_tok_safe!(tokens, "List") {
+            Token::RBrack => Ok(node),
+            t => Err(format!("Expected ] while parsing list, encountered {:?}", t).into()),
         }
     } else {
         Err(format!("Expected [ while parsing list, encountered {:?}", tokens[0]).into())
     }
 }
 
-fn parse_list_body(tokens: &mut [Token]) -> ParseResult {
-    match &mut tokens[0] {
+fn parse_list_body(tokens: &mut VecDeque<Token>) -> ParseResult {
+    match peek_tok_safe!(tokens, "ListBody") {
         val_pattern!() => {
             // We have <Val> and need to process it
-            let (val, val_cnt) = parse_val(tokens)?;
+            let val = parse_val(tokens)?;
 
-            Ok(
-                if tokens.get(val_cnt).ok_or::<InterpretError>(
-                    "Unexpectedly reached end of input while trying to parse list".into(),
-                )? == &Token::RBrack
-                {
-                    (rule_node_helper!(ListBody, val), val_cnt)
-                } else {
-                    let (tail, tail_cnt) = parse_list_body(&mut tokens[val_cnt..])?;
-                    (rule_node_helper!(ListBody, [val, tail]), val_cnt + tail_cnt)
-                },
-            )
+            Ok(if peek_tok_safe!(tokens, "ListBody") == &Token::RBrack {
+                rule_node_helper!(ListBody, val)
+            } else {
+                let tail = parse_list_body(tokens)?;
+                rule_node_helper!(ListBody, [val, tail])
+            })
         }
         t => Err(format!(
             "Unexpected token encountered while parsing expression body: {:?}",
@@ -314,14 +291,15 @@ mod tests {
     use super::*;
 
     macro_rules! do_parse_test {
-        ($([$input:expr, $node:expr, $count:literal]),+) => {
+        ($([$input:expr, $node:expr]),+) => {
             {
                 $(
                     {
                         let input = $input.chars().collect();
                         let mut tokens = tokenize(input)?;
 
-                        assert_eq!(parse_prog(&mut tokens)?, ($node, $count));
+                        assert_eq!(parse_prog(&mut tokens)?, $node);
+                        assert!(tokens.len() == 0);
                     }
                 )+
 
@@ -337,35 +315,29 @@ mod tests {
                 "(-1.24f)",
                 prog_node_helper!(val_node_helper!(ParseToken::from(
                     NumLiteral::new_float_with_suffix(1, 24, true, 'f')
-                ))),
-                3
+                )))
             ],
             [
                 "(arstien)",
-                prog_node_helper!(val_node_helper!(ParseToken::Ident("arstien".to_string()))),
-                3
+                prog_node_helper!(val_node_helper!(ParseToken::Ident("arstien".to_string())))
             ],
             [
                 "(uint)",
-                prog_node_helper!(val_node_helper!(ParseToken::Type(Type::UInt))),
-                3
+                prog_node_helper!(val_node_helper!(ParseToken::Type(Type::UInt)))
             ],
             [
                 "('a')",
-                prog_node_helper!(val_node_helper!(ParseToken::CharLiteral(b'a'))),
-                3
+                prog_node_helper!(val_node_helper!(ParseToken::CharLiteral(b'a')))
             ],
             [
                 "(\"teststr\")",
                 prog_node_helper!(val_node_helper!(ParseToken::StringLiteral(
                     "teststr".to_string()
-                ))),
-                3
+                )))
             ],
             [
                 "(())",
-                prog_node_helper!(val_node_helper!(ParseToken::UnitLiteral)),
-                3
+                prog_node_helper!(val_node_helper!(ParseToken::UnitLiteral))
             ]
         )
     }
@@ -390,13 +362,11 @@ mod tests {
         do_parse_test!(
             [
                 "([12.4 'c' \"ABCD\"])",
-                prog_node_helper!(val_node_helper!([node1])),
-                7
+                prog_node_helper!(val_node_helper!([node1]))
             ],
             [
                 "([-14.6 [12.4 'c' \"ABCD\"] ()])",
-                prog_node_helper!(val_node_helper!([node2])),
-                11
+                prog_node_helper!(val_node_helper!([node2]))
             ]
         )
     }
@@ -429,11 +399,10 @@ mod tests {
         );
 
         do_parse_test!(
-            ["(+ \"ASTR\" 'a' -1u)", prog_node_helper!(node1), 6],
+            ["(+ \"ASTR\" 'a' -1u)", prog_node_helper!(node1)],
             [
                 "(tostring \"ANTS\" [\"ASTR\" 'a' -1u] 'b')",
-                prog_node_helper!(node2),
-                10
+                prog_node_helper!(node2)
             ]
         )
     }

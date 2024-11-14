@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::error::{InterpretError, InterpreteResult};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -523,12 +525,12 @@ fn handle_num_literal(input: &[char]) -> InterpreteResult<(NumLiteral, usize)> {
     ))
 }
 
-pub fn tokenize(input: Vec<char>) -> InterpreteResult<Vec<Token>> {
+pub fn tokenize(input: Vec<char>) -> InterpreteResult<VecDeque<Token>> {
     // This way I don't need to worry about testing for ascii in every method
     let input: Vec<char> = input.into_iter().filter(|c| c.is_ascii()).collect();
 
     let mut curr_index = 0;
-    let mut res = Vec::new();
+    let mut res = VecDeque::new();
 
     loop {
         if curr_index >= input.len() {
@@ -536,9 +538,9 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<Vec<Token>> {
         }
 
         match input[curr_index] {
-            '+' => res.push(ReservedIdent::Add.into()),
-            '/' => res.push(ReservedIdent::Div.into()),
-            '*' => res.push(ReservedIdent::Mul.into()),
+            '+' => res.push_back(ReservedIdent::Add.into()),
+            '/' => res.push_back(ReservedIdent::Div.into()),
+            '*' => res.push_back(ReservedIdent::Mul.into()),
             '(' => {
                 // Important to note that this means `( )` is not a valid unit literal
                 if *input
@@ -546,31 +548,31 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<Vec<Token>> {
                     .ok_or("Unexpectedly reached end of input")?
                     == ')'
                 {
-                    res.push(Token::UnitLiteral);
+                    res.push_back(Token::UnitLiteral);
                     curr_index += 1;
                 } else {
-                    res.push(Token::LParen);
+                    res.push_back(Token::LParen);
                 }
             }
-            ')' => res.push(Token::RParen),
-            '[' => res.push(Token::LBrack),
-            ']' => res.push(Token::RBrack),
+            ')' => res.push_back(Token::RParen),
+            '[' => res.push_back(Token::LBrack),
+            ']' => res.push_back(Token::RBrack),
             '0'..='9' => {
                 let (lit, count) = handle_num_literal(&input[curr_index..])?;
                 curr_index += count - 1;
-                res.push(Token::NumLiteral(lit))
+                res.push_back(Token::NumLiteral(lit))
             }
             '\'' => {
                 let c = handle_char_literal(&input[curr_index..])?;
                 // Since a char literal takes up 3 characters
                 curr_index += 2;
-                res.push(Token::CharLiteral(c));
+                res.push_back(Token::CharLiteral(c));
             }
             '\"' => {
                 let s = handle_string_literal(&input[curr_index..])?;
                 // Need to ultimately shift by s.len() + 2, including standard shift by 1
                 curr_index += s.len() + 1;
-                res.push(Token::StringLiteral(s));
+                res.push_back(Token::StringLiteral(s));
             }
             '-' => {
                 if *input
@@ -578,16 +580,16 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<Vec<Token>> {
                     .ok_or("Unexpectedly reached end of input")?
                     == ' '
                 {
-                    res.push(ReservedIdent::Sub.into());
+                    res.push_back(ReservedIdent::Sub.into());
                 } else {
                     let (lit, count) = handle_num_literal(&input[curr_index..])?;
                     curr_index += count - 1;
-                    res.push(Token::NumLiteral(lit));
+                    res.push_back(Token::NumLiteral(lit));
                 }
             }
             'a'..='z' | 'A'..='Z' => {
                 let (tok, adj) = handle_identifier(&input[curr_index..])?;
-                res.push(tok);
+                res.push_back(tok);
                 curr_index += adj;
             }
             ' ' => (),
@@ -597,7 +599,7 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<Vec<Token>> {
         curr_index += 1;
     }
 
-    res.push(Token::EOF);
+    res.push_back(Token::EOF);
 
     Ok(res)
 }

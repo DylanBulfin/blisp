@@ -773,8 +773,8 @@ mod tests {
                 {
                     let input = $input.chars().collect();
                     let mut tokens = tokenize(input)?;
-                    let prog = parse_prog(tokens.as_mut_slice())?;
-                    let value = eval(prog.0)?;
+                    let prog = parse_prog(&mut tokens)?;
+                    let value = eval(prog)?;
 
                     assert_eq!(value, $value);
                 }
@@ -786,8 +786,8 @@ mod tests {
     fn basic_val_test() -> InterpreTestResult {
         let input1 = "(-1.2)".chars().collect();
         let mut tokens1 = tokenize(input1)?;
-        let prog1 = parse_prog(tokens1.as_mut_slice())?;
-        let value1 = eval(prog1.0)?;
+        let prog1 = parse_prog(&mut tokens1)?;
+        let value1 = eval(prog1)?;
         let exp1 = Value {
             ty: Type::Float.into(),
             val: ValueData::Float(-1.2),

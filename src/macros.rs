@@ -49,7 +49,7 @@ macro_rules! assert_fails_parser {
         $crate::macros::import!(*);
         assert_fails!($testname => {
             if let Ok(mut tokens) = tokenize($input.chars().collect()) {
-                if let Err(e) = parse_prog(tokens.as_mut_slice()) {
+                if let Err(e) = parse_prog(&mut tokens) {
                     panic!("{}", e);
                 }
             }
@@ -199,6 +199,41 @@ macro_rules! list_value_helper {
             AbstractType::List,
             ValueData::List(vec![$($val)+])
         )
+    };
+}
+
+macro_rules! pop_tok_safe {
+    (n = $cnt:expr, $vec:ident, $rule:literal) => {{
+        #[allow(clippy::int_plus_one)]
+        if $cnt <= 0 {
+            panic!("Can't pop 0 times")
+        }
+
+        let mut curr = Token::UnitLiteral;
+
+        for _ in 0..$cnt {
+            curr = $vec.pop_front().ok_or(InterpretError::from(format!(
+                "Unexpectedly reached end of input while parsing {}",
+                $rule
+            )))?;
+        }
+
+        curr
+    }};
+    ($vec:ident, $rule:literal) => {
+        $vec.pop_front().ok_or(InterpretError::from(format!(
+            "Unexpectedly reached end of input while parsing {}",
+            $rule
+        )))?
+    };
+}
+
+macro_rules! peek_tok_safe {
+    ($vec:ident, $rule:literal) => {
+        $vec.front().ok_or(InterpretError::from(format!(
+            "Unexpectedly reached end of input while parsing {}",
+            $rule
+        )))?
     };
 }
 
@@ -396,8 +431,8 @@ mod tests {
         let mut tokens1 = tokenize("([12.4 'c' \"ABCD\"])".chars().collect())?;
         let mut tokens2 = tokenize("(+ 13.5 'd' [12.4 'c' \"ABCD\"])".chars().collect())?;
 
-        let node1 = parse_prog(tokens1.as_mut_slice())?;
-        let node2 = parse_prog(tokens2.as_mut_slice())?;
+        let node1 = parse_prog(&mut tokens1)?;
+        let node2 = parse_prog(&mut tokens2)?;
 
         let exp1 = Node::Rule(RuleNodeData::new(
             Rule::Prog,
@@ -423,8 +458,8 @@ mod tests {
             ))],
         ));
 
-        assert_eq!(node1, (exp1, 7));
-        assert_eq!(node2, (exp2, 10));
+        assert_eq!(node1, exp1);
+        assert_eq!(node2, exp2);
 
         Ok(())
     }
@@ -565,5 +600,7 @@ crate_publish_macros!(
     leaf_node_pattern,
     rule_node_pattern,
     list_value_helper,
+    pop_tok_safe,
+    peek_tok_safe,
     import,
 );

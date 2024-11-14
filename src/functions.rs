@@ -144,12 +144,12 @@ mod tests {
         let input2 = "(add 1.5 1)";
 
         let mut tokens1 = tokenize(input1.chars().collect())?;
-        let mut tokens2 = tokenize(input2.chars().collect())?;
+        let tokens2 = tokenize(input2.chars().collect())?;
 
         assert_eq!(tokens1, tokens2);
 
-        let node = parse_prog(tokens1.as_mut_slice())?;
-        let val = eval(node.0)?;
+        let node = parse_prog(&mut tokens1)?;
+        let val = eval(node)?;
 
         assert_eq!(val, 2.5.into());
 
@@ -162,12 +162,12 @@ mod tests {
         let input2 = "(add 2 (+ 1.5 1))";
 
         let mut tokens1 = tokenize(input1.chars().collect())?;
-        let mut tokens2 = tokenize(input2.chars().collect())?;
+        let tokens2 = tokenize(input2.chars().collect())?;
 
         assert_eq!(tokens1, tokens2);
 
-        let node = parse_prog(tokens1.as_mut_slice())?;
-        let val = eval(node.0)?;
+        let node = parse_prog(&mut tokens1)?;
+        let val = eval(node)?;
 
         assert_eq!(val, 4.5.into());
 
@@ -181,7 +181,7 @@ mod tests {
 
         let mut tokens = tokenize(input.chars().collect()).expect("Failed lexing");
 
-        let node = parse_prog(tokens.as_mut_slice()).expect("Failed parsing");
-        eval(node.0).unwrap();
+        let node = parse_prog(&mut tokens).expect("Failed parsing");
+        eval(node).unwrap();
     }
 }

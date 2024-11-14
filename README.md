@@ -1,5 +1,5 @@
 # BLisp
-Short for 'Basic Lisp', pronounced 'bee-lisp' so as to rhyme with 'ELisp', this is a 
+Sfor 'Basic Lisp', pronounced 'bee-lisp' so as to rhyme with 'ELisp', this is a 
 custom Lisp dialect with a very limited instruction set. I am not very familiar with Lisp 
 so it may or may not end up looking anything like other Lisp variants. 
 
@@ -139,21 +139,40 @@ context that a literal of the same type would be valid (and a few others).
     - `(while T U) -> ()` is defined for `T: bool, U: any`
 
 ### Boolean Operations
-- `==` or `eq`
-    - `(== 1 1) = (eq 'a' 'a') = true`
-    - `(== T T) -> bool` defined for all default types
-- `<>` or `neq`
-- `<=` or `leq`
-- `>=` or `geq`
-- `<` or `lt`
-- `>` or `gt`
-- `&&` or `and`
-- `||` or `or`
+***Note***: Boolean logic is *not* lazy, e.g. `(and false (write x))` still evaluates
+the second expression. May change later
+- `eq`
+    - `(eq 'a' 'a') = true`
+    - `(eq T T) -> bool` defined for all default types
+- `neq`
+    - `(neq 'a' 'a') = false`
+    - `(neq T T) -> bool` defined for all default types
+- `leq`
+    - `(leq 'a' 'b') = true`
+    - `(leq T T) -> bool` defined for `T: char, int, uint, float`
+- `geq`
+    - `(geq 'a' 'b') = true`
+    - `(geq T T) -> bool` defined for `T: char, int, uint, float`
+- `lt`
+    - `(lt 'a' 'b') = true`
+    - `(lt T T) -> bool` defined for `T: char, int, uint, float`
+- `gt`
+    - `(gt 'a' 'b') = true`
+    - `(gt T T) -> bool` defined for `T: char, int, uint, float`
+- `and`
+    - `(and true false) = false`
+    - `(and T T) -> bool` defined for `T: bool`
+- `or`
+    - `(or true false) = true`
+    - `(or T T) -> bool` defined for `T: bool`
+- `!` or `not` (1 arg)
+    - `(not true) = (not (not false)) = false`
+    - `(or T) -> bool` defined for `T: bool`
 
 ### Collection methods
-- `++` or `concat` 
-    - `(++ [1, 2, 3] [4, 5, 6]) = (concat [1] [2, 3, 4, 5, 6]) = [1, 2, 3, 4, 5, 6]`
-    - `(++ list<T> list<T>) -> list<T>` defined for `T: any` (which includes strings)
+- `concat` 
+    - `(concat [1] [2, 3, 4, 5, 6]) = [1, 2, 3, 4, 5, 6]`
+    - `(concat list<T> list<T>) -> list<T>` defined for `T: any` (which includes strings)
 - `:` or `prepend`
     - `(: 1 [2, 3, 4]) = (prepend 1 [2, 3, 4]) = [1, 2, 3, 4]`
     - `(: T list<T>) -> list<T>` defined for `T: any` (which includes strings, where 
@@ -161,9 +180,6 @@ context that a literal of the same type would be valid (and a few others).
 - `take`
     - `(take 2 [1, 2, 3, 4, 5]) = [1, 2]`
     - `(take T list<U>) -> list<U>` is defined for `T: uint, U: any`
-- `split`
-    - `(split 3 [1, 2, 3, 4, 5]) = ([1, 2, 3], [4, 5])`
-    - `(split T list<U>) -> (list<U>, list<U>)` is defined for `T: uint, U: any`
 
 ### Variable management
 - `def`

@@ -29,6 +29,7 @@ pub enum ParseToken {
     CharLiteral(u8),
     UnitLiteral,
     StringLiteral(String),
+    BoolLiteral(bool),
     Ident(String),
     Type(Type),
     Reserved(ReservedIdent),
@@ -81,6 +82,7 @@ impl TryFrom<Token> for ParseToken {
             Token::Ident(i) => Ok(Self::Ident(i)),
             Token::Type(t) => Ok(Self::Type(t)),
             Token::Reserved(r) => Ok(Self::Reserved(r)),
+            Token::BoolLiteral(b) => Ok(Self::BoolLiteral(b)),
             t => Err(format!("{:?} is not a valid ParseToken", t).into()),
         }
     }

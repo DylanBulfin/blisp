@@ -1,6 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::format,
+    fmt::{format, Display, Formatter, Write},
 };
 
 use crate::{
@@ -17,7 +17,7 @@ use super::{
 
 /// Contains variable dictionary
 pub struct State {
-    vars: HashMap<String, Option<Value>>,
+    vars: HashMap<String, (Type, Option<Value>)>,
 }
 
 impl State {
@@ -31,15 +31,36 @@ impl State {
     pub fn get_var(&self, ident: &str) -> InterpreteResult<&Value> {
         self.vars
             .get(ident)
-            .map(Option::as_ref)
+            .map(|(a, b)| (a, b.as_ref()))
             .ok_or(format!("Variable has not been initialized at all: {}", ident).into())
-            .and_then(|o| o.ok_or("Variable has been initialized but not set".into()))
+            .and_then(|o| {
+                o.1.ok_or("Variable has been initialized but not set".into())
+            })
     }
 
-    pub fn create_var(&mut self, ident: String, val: Option<Value>) -> InterpreteResult<()> {
+    pub fn create_var(&mut self, ident: String, val: Value) -> InterpreteResult<()> {
         match self.vars.entry(ident) {
             Entry::Vacant(e) => {
-                e.insert(val);
+                let ty = match &val.ty {
+                    AbstractType::ConcreteType(t) => t.clone(),
+                    AbstractType::NegNumber | AbstractType::Number => Type::Int,
+                    AbstractType::List => {
+                        return Err("Cannot create a variable with abstract list type".into())
+                    }
+                };
+                e.insert((ty, Some(val)));
+                Ok(())
+            }
+            Entry::Occupied(e) => {
+                Err(format!("Already have a variable called: {}", e.key()).into())
+            }
+        }
+    }
+
+    pub fn init_var(&mut self, ident: String, ty: Type) -> InterpreteResult<()> {
+        match self.vars.entry(ident) {
+            Entry::Vacant(e) => {
+                e.insert((ty, None));
                 Ok(())
             }
             Entry::Occupied(e) => {
@@ -51,7 +72,7 @@ impl State {
     pub fn set_var(&mut self, ident: String, val: Value) -> InterpreteResult<()> {
         match self.vars.entry(ident) {
             Entry::Occupied(mut e) => {
-                e.insert(Some(val));
+                e.get_mut().1 = Some(val);
                 Ok(())
             }
             Entry::Vacant(e) => {
@@ -166,7 +187,7 @@ pub enum ValueData {
     Char(u8),
     Bool(bool),
     // Abstract types below
-    Number(u64),
+    Number(i64),
     NegNumber(i64),
 }
 
@@ -181,12 +202,38 @@ impl Value {
         Self { ty, val }
     }
 
+    pub fn new_number(val: i64) -> Self {
+        Self {
+            ty: AbstractType::Number,
+            val: ValueData::Number(val),
+        }
+    }
+
+    pub fn new_negnumber(val: i64) -> Self {
+        Self {
+            ty: AbstractType::NegNumber,
+            val: ValueData::NegNumber(val),
+        }
+    }
+
+    pub fn val(&self) -> &ValueData {
+        &self.val
+    }
+
+    pub fn ty(&self) -> &AbstractType {
+        &self.ty
+    }
+
     pub fn is_list(&self) -> bool {
-        self.ty == AbstractType::List
+        self.ty == AbstractType::List || matches!(self.ty, AbstractType::ConcreteType(_))
+    }
+
+    pub fn is_concrete_list(&self) -> bool {
+        matches!(self.ty, AbstractType::ConcreteType(Type::List(_)))
     }
 
     /// Only defined for `Number` typed vars
-    pub fn try_as_number(&self) -> InterpreteResult<u64> {
+    pub fn try_as_number(&self) -> InterpreteResult<i64> {
         if let ValueData::Number(n) = self.val {
             Ok(n)
         } else {
@@ -219,7 +266,7 @@ impl Value {
     /// Only defined for `Number` and `uint` typed vars
     pub fn try_as_uint(&self) -> InterpreteResult<u64> {
         match self.val {
-            ValueData::Number(n) => Ok(n),
+            ValueData::Number(n) => Ok(n as u64),
             ValueData::UInt(n) => Ok(n),
             _ => Err(format!("Tried to convert invalid value to uint: {:?}", self).into()),
         }
@@ -269,6 +316,41 @@ impl Value {
     }
 }
 
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.val {
+            ValueData::UInt(n) => f.write_fmt(format_args!("{}", n)),
+            ValueData::Number(i) | ValueData::NegNumber(i) | ValueData::Int(i) => {
+                f.write_fmt(format_args!("{}", i))
+            }
+            ValueData::Float(x) => f.write_fmt(format_args!("{}", x)),
+            ValueData::Bool(b) => f.write_fmt(format_args!("{}", b)),
+            ValueData::Char(c) => f.write_fmt(format_args!("'{}'", *c as char)),
+            ValueData::Unit => f.write_str("()"),
+            ValueData::List(v) => {
+                if self.ty == Type::List(Box::new(Type::Char)).into() {
+                    let s = v
+                        .iter()
+                        .map(|c| {
+                            c.try_as_char()
+                                .expect("Unable to read string contents as char")
+                                as char
+                        })
+                        .collect::<String>();
+                    f.write_fmt(format_args!("\"{}\"", s))
+                } else {
+                    let s = v
+                        .iter()
+                        .map(|val| val.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    f.write_fmt(format_args!("[{}]", s))
+                }
+            }
+        }
+    }
+}
+
 impl From<u8> for Value {
     fn from(value: u8) -> Self {
         Self {
@@ -287,8 +369,22 @@ impl From<f64> for Value {
     }
 }
 
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Self {
+            ty: Type::Int.into(),
+            val: ValueData::Int(value),
+        }
+    }
+}
+
 impl From<String> for Value {
     fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
         Value {
             ty: Type::List(Box::new(Type::Char)).into(),
             val: ValueData::List(value.as_bytes().iter().copied().map(Value::from).collect()),
@@ -296,8 +392,17 @@ impl From<String> for Value {
     }
 }
 
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value {
+            ty: Type::Bool.into(),
+            val: ValueData::Bool(value),
+        }
+    }
+}
+
 impl From<()> for Value {
-    fn from(value: ()) -> Self {
+    fn from(_value: ()) -> Self {
         Value {
             ty: Type::Unit.into(),
             val: ValueData::Unit,
@@ -327,7 +432,7 @@ impl TryFrom<NumLiteral> for Value {
                 } else {
                     Ok(Value::new(
                         AbstractType::Number,
-                        ValueData::Number(int_part),
+                        ValueData::Number(int_part as i64),
                     ))
                 }
             }
@@ -450,6 +555,22 @@ impl Argument {
             t => Ok(t),
         }
     }
+
+    pub fn try_get_type(&self) -> InterpreteResult<&Type> {
+        if let Self::Type(t) = self {
+            Ok(t)
+        } else {
+            Err(format!("Attempted to get Type from non-Type argument {:?}", self).into())
+        }
+    }
+
+    pub fn try_get_ident(&self) -> InterpreteResult<&str> {
+        if let Self::Ident(i) = self {
+            Ok(i)
+        } else {
+            Err(format!("Attempted to get Ident from non-Ident argument {:?}", self).into())
+        }
+    }
 }
 
 pub struct Func {
@@ -554,6 +675,7 @@ fn eval_val_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
             leaf_node_pattern!(CharLiteral(c)) => Ok(c.into()),
             leaf_node_pattern!(StringLiteral(s)) => Ok(s.into()),
             leaf_node_pattern!(NumLiteral(n)) => n.try_into(),
+            leaf_node_pattern!(BoolLiteral(n)) => Ok(n.into()),
             leaf_node_pattern!(UnitLiteral) => Ok(().into()),
             leaf_node_pattern!(Ident(i)) => state.get_var(&i).cloned(),
             rule_node_pattern!(List => node) => eval_list_node(node, state),
@@ -576,7 +698,7 @@ fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value>
                 let func = rsv;
                 let args = eval_args_node(args_node, state)?;
 
-                eval_function(func, args)
+                eval_function(func, args, state)
             }
             n => Err(format!("Expected function name, found {:?}", n).into()),
         }
@@ -856,5 +978,41 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn tostring_test() {
+        let vals: Vec<Value> = vec![
+            1i64.into(),
+            1.0.into(),
+            true.into(),
+            ().into(),
+            b'a'.into(),
+            "ABCDE".into(),
+            Value::new(
+                Type::List(Box::new(Type::Int)).into(),
+                ValueData::List(vec![
+                    12i64.into(),
+                    14i64.into(),
+                    16i64.into(),
+                    123512351325i64.into(),
+                ]),
+            ),
+        ];
+
+        let s = vals.iter().map(|val| val.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(
+            s,
+            vec![
+                "1",
+                "1",
+                "true",
+                "()",
+                "'a'",
+                "\"ABCDE\"",
+                "[12, 14, 16, 123512351325]"
+            ]
+        );
     }
 }

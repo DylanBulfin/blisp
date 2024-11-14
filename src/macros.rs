@@ -67,6 +67,7 @@ macro_rules! val_pattern {
             | Token::CharLiteral(_)
             | Token::StringLiteral(_)
             | Token::NumLiteral(_)
+            | Token::BoolLiteral(_)
             | Token::UnitLiteral
     };
     (terminals) => {
@@ -75,6 +76,7 @@ macro_rules! val_pattern {
             | Token::CharLiteral(_)
             | Token::StringLiteral(_)
             | Token::NumLiteral(_)
+            | Token::BoolLiteral(_)
             | Token::UnitLiteral
     };
 }
@@ -194,10 +196,22 @@ macro_rules! leaf_node_pattern {
 }
 
 macro_rules! list_value_helper {
-    [$($val:expr)+] => {
+    [ct: $type:ident; $($val:expr),+] => {
+        Value::new(
+            Type::List(Box::new(Type::$type.into())).into(),
+            ValueData::List(vec![$($val),+])
+        )
+    };
+    [nested: $type:ident; $($val:expr),+] => {
+        Value::new(
+            Type::List(Box::new(Type::List(Box::new(Type::$type)))).into(),
+            ValueData::List(vec![$($val),+])
+        )
+    };
+    [$($val:expr),+] => {
         Value::new(
             AbstractType::List,
-            ValueData::List(vec![$($val)+])
+            ValueData::List(vec![$($val),+])
         )
     };
 }

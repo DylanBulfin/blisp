@@ -138,13 +138,14 @@ pub enum ReservedIdent {
 
     // Boolean ops
     Eq,
-    Neq,
-    Leq,
-    Geq,
+    Ne,
+    Le,
+    Ge,
     Lt,
     Gt,
     And,
     Or,
+    Not,
 
     // Vars
     Set,
@@ -177,13 +178,14 @@ impl TryFrom<&str> for ReservedIdent {
             "if" => Ok(Self::If),
             "while" => Ok(Self::While),
             "eq" => Ok(Self::Eq),
-            "neq" => Ok(Self::Neq),
-            "leq" => Ok(Self::Leq),
-            "geq" => Ok(Self::Geq),
+            "ne" => Ok(Self::Ne),
+            "le" => Ok(Self::Le),
+            "ge" => Ok(Self::Ge),
             "lt" => Ok(Self::Lt),
             "gt" => Ok(Self::Gt),
             "and" => Ok(Self::And),
             "or" => Ok(Self::Or),
+            "not" => Ok(Self::Not),
             "set" => Ok(Self::Set),
             "init" => Ok(Self::Init),
             "def" => Ok(Self::Def),
@@ -267,6 +269,7 @@ pub enum Token {
     CharLiteral(u8),
     UnitLiteral,
     StringLiteral(String),
+    BoolLiteral(bool),
     Ident(String),
     Type(Type),
     Reserved(ReservedIdent),
@@ -361,9 +364,16 @@ impl From<&str> for Token {
         Self::StringLiteral(value.to_string())
     }
 }
+
 impl From<String> for Token {
     fn from(value: String) -> Self {
         Self::StringLiteral(value)
+    }
+}
+
+impl From<bool> for Token {
+    fn from(value: bool) -> Self {
+        Self::BoolLiteral(value)
     }
 }
 
@@ -387,6 +397,10 @@ fn handle_char_literal(input: &[char]) -> InterpreteResult<u8> {
         Ok(input[1] as u8)
     }
 }
+
+//fn handle_bool_literal(input: &[char]) -> InterpreteResult<bool> {
+//    if *input.get(2)
+//}
 
 fn handle_string_literal(input: &[char]) -> InterpreteResult<String> {
     // Starting on character directly after opening "
@@ -449,6 +463,10 @@ fn handle_identifier(input: &[char]) -> InterpreteResult<(Token, usize)> {
         Ok((Token::from(ty), adj))
     } else if let Ok(rsv) = ReservedIdent::try_from(curr_ident.as_str()) {
         Ok((Token::from(rsv), adj))
+    } else if curr_ident.as_str() == "true" {
+        Ok((Token::from(true), adj))
+    } else if curr_ident.as_str() == "false" {
+        Ok((Token::from(false), adj))
     } else {
         Ok((Token::Ident(curr_ident), adj))
     }
@@ -557,6 +575,7 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<VecDeque<Token>> {
             ')' => res.push_back(Token::RParen),
             '[' => res.push_back(Token::LBrack),
             ']' => res.push_back(Token::RBrack),
+            '!' => res.push_back(ReservedIdent::Not.into()),
             '0'..='9' => {
                 let (lit, count) = handle_num_literal(&input[curr_index..])?;
                 curr_index += count - 1;
@@ -592,7 +611,7 @@ pub fn tokenize(input: Vec<char>) -> InterpreteResult<VecDeque<Token>> {
                 res.push_back(tok);
                 curr_index += adj;
             }
-            ' ' => (),
+            ' ' | '\n' => (),
             c => return Err(format!("Haven't implemented the char {}", c).into()),
         };
 
@@ -876,7 +895,7 @@ mod tests {
     #[test]
     fn reserved_ident_test() -> InterpreTestResult {
         let (input1, output1) = (
-            "(add + sub - div / mul * write read if while eq neq leq geq lt gt and or set init def concat prepend take eval tostring)".chars().collect(),
+            "(add + sub - div / mul * write read if while eq ne le ge lt gt and or set init def concat prepend take eval tostring)".chars().collect(),
             [
                 Token::LParen,
                 ReservedIdent::Add.into(),
@@ -892,9 +911,9 @@ mod tests {
                 ReservedIdent::If.into(),
                 ReservedIdent::While.into(),
                 ReservedIdent::Eq.into(),
-                ReservedIdent::Neq.into(),
-                ReservedIdent::Leq.into(),
-                ReservedIdent::Geq.into(),
+                ReservedIdent::Ne.into(),
+                ReservedIdent::Le.into(),
+                ReservedIdent::Ge.into(),
                 ReservedIdent::Lt.into(),
                 ReservedIdent::Gt.into(),
                 ReservedIdent::And.into(),
@@ -956,6 +975,28 @@ mod tests {
         );
 
         assert_eq!(tokenize(input1)?, output1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn bool_literal_test() -> InterpreTestResult {
+        let (input, output) = (
+            "(true false true false false false)".chars().collect(),
+            [
+                Token::LParen,
+                Token::BoolLiteral(true),
+                Token::BoolLiteral(false),
+                Token::BoolLiteral(true),
+                Token::BoolLiteral(false),
+                Token::BoolLiteral(false),
+                Token::BoolLiteral(false),
+                Token::RParen,
+                Token::EOF,
+            ],
+        );
+
+        assert_eq!(tokenize(input)?, output);
 
         Ok(())
     }

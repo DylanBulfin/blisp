@@ -73,7 +73,10 @@ pub fn eval_add(mut args: Vec<Argument>) -> InterpreteResult<Value> {
 
     let (arg1, arg2) = (args.pop().unwrap(), args.pop().unwrap());
 
-    let ty = AbstractType::coerce_types(arg1.try_get_val_type()?, arg2.try_get_val_type()?)?;
+    let ty = AbstractType::coerce_types(
+        arg1.try_get_val_type()?.clone(),
+        arg2.try_get_val_type()?.clone(),
+    )?;
 
     let (val1, val2) = (arg1.try_get_val()?, arg2.try_get_val()?);
 
@@ -116,12 +119,10 @@ pub fn eval_add(mut args: Vec<Argument>) -> InterpreteResult<Value> {
 mod tests {
 
     use crate::{
-        blisp::{
-            interpreter::{eval, Argument, State, Value},
-            lexer::tokenize,
-            parser::parse_prog,
-        },
         error::InterpreTestResult,
+        interpreter::{eval, Argument, State, Value},
+        lexer::tokenize,
+        parser::parse_prog,
     };
 
     use super::eval_add;
@@ -142,12 +143,12 @@ mod tests {
         let input1 = "(+ 1.5 1)";
         let input2 = "(add 1.5 1)";
 
-        let tokens1 = tokenize(input1.chars().collect())?;
-        let tokens2 = tokenize(input2.chars().collect())?;
+        let mut tokens1 = tokenize(input1.chars().collect())?;
+        let mut tokens2 = tokenize(input2.chars().collect())?;
 
         assert_eq!(tokens1, tokens2);
 
-        let node = parse_prog(tokens1.as_slice())?;
+        let node = parse_prog(tokens1.as_mut_slice())?;
         let val = eval(node.0)?;
 
         assert_eq!(val, 2.5.into());
@@ -160,12 +161,12 @@ mod tests {
         let input1 = "(+ 2 (add 1.5 1))";
         let input2 = "(add 2 (+ 1.5 1))";
 
-        let tokens1 = tokenize(input1.chars().collect())?;
-        let tokens2 = tokenize(input2.chars().collect())?;
+        let mut tokens1 = tokenize(input1.chars().collect())?;
+        let mut tokens2 = tokenize(input2.chars().collect())?;
 
         assert_eq!(tokens1, tokens2);
 
-        let node = parse_prog(tokens1.as_slice())?;
+        let node = parse_prog(tokens1.as_mut_slice())?;
         let val = eval(node.0)?;
 
         assert_eq!(val, 4.5.into());
@@ -178,9 +179,9 @@ mod tests {
     fn invalid_type_test1() {
         let input = "(+ 1u (add 1.5 1))";
 
-        let tokens = tokenize(input.chars().collect()).expect("Failed lexing");
+        let mut tokens = tokenize(input.chars().collect()).expect("Failed lexing");
 
-        let node = parse_prog(tokens.as_slice()).expect("Failed parsing");
+        let node = parse_prog(tokens.as_mut_slice()).expect("Failed parsing");
         eval(node.0).unwrap();
     }
 }

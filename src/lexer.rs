@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::error::{InterpretError, InterpreteResult};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -275,7 +277,33 @@ pub enum Token {
     EOF,
 }
 
+impl Default for Token {
+    fn default() -> Self {
+        // This implementation is for convenience, it allows me to use mem::take()
+        Self::UnitLiteral
+    }
+}
+
 macro_rules! token_helper{
+    (Copy => $([$isfunc:ident, $assfunc:ident, $var:ident, $innertype:ty]);+) => {
+        impl Token {
+            $(
+                pub fn $isfunc(&self) -> bool {
+                    match self {
+                        Self::$var(_) => true,
+                        _ => false,
+                    }
+                }
+
+                pub fn $assfunc(&self) -> crate::error::InterpreteResult<$innertype> {
+                    match self {
+                        Self::$var(v) => Ok(*v),
+                        _ => Err(format!("Assertion failed, self: {:?}", self).into()),
+                    }
+                }
+            )+
+        }
+    };
     ($([$isfunc:ident, $assfunc:ident, $var:ident, $innertype:ty]);+) => {
         impl Token {
             $(
@@ -298,11 +326,13 @@ macro_rules! token_helper{
 }
 
 token_helper!(
-    [is_num, assert_num, NumLiteral, NumLiteral];
-    [is_char, assert_char, CharLiteral, u8];
     [is_string, assert_string, StringLiteral, String];
     [is_ident, assert_ident, Ident, String];
-    [is_type, assert_type, Type, Type];
+    [is_type, assert_type, Type, Type]
+);
+token_helper!( Copy =>
+    [is_num, assert_num, NumLiteral, NumLiteral];
+    [is_char, assert_char, CharLiteral, u8];
     [is_reserved, assert_reserved, Reserved, ReservedIdent]
 );
 
@@ -953,5 +983,4 @@ mod tests {
 
         Ok(())
     }
-
 }

@@ -237,9 +237,9 @@ impl Value {
 
     /// Only defined for `List` types (Abstract list type should never be around at this
     /// point)
-    pub fn try_as_list(&self) -> InterpreteResult<Vec<Value>> {
+    pub fn try_as_list(&self) -> InterpreteResult<&Vec<Value>> {
         match &self.val {
-            ValueData::List(vals) => Ok(vals.clone()),
+            ValueData::List(vals) => Ok(vals),
             _ => Err(format!("Tried to convert invalid value to list: {:?}", self).into()),
         }
     }
@@ -482,6 +482,8 @@ fn eval_leaf_node(node: Node, state: &State) -> InterpreteResult<Value> {
             ParseToken::CharLiteral(c) => Ok(c.into()),
             ParseToken::UnitLiteral => Ok(().into()),
             ParseToken::StringLiteral(s) => Ok(s.into()),
+            // I think this clone is unavoidable. We can't return a reference because
+            // other Values are created locally
             ParseToken::Ident(i) => state.get_var(&i).cloned(),
             t => Err(format!("Expected literal or identifier, found {:?}", t).into()),
         }
@@ -770,8 +772,8 @@ mod tests {
             $(
                 {
                     let input = $input.chars().collect();
-                    let tokens = tokenize(input)?;
-                    let prog = parse_prog(tokens.as_slice())?;
+                    let mut tokens = tokenize(input)?;
+                    let prog = parse_prog(tokens.as_mut_slice())?;
                     let value = eval(prog.0)?;
 
                     assert_eq!(value, $value);
@@ -783,8 +785,8 @@ mod tests {
     #[test]
     fn basic_val_test() -> InterpreTestResult {
         let input1 = "(-1.2)".chars().collect();
-        let tokens1 = tokenize(input1)?;
-        let prog1 = parse_prog(tokens1.as_slice())?;
+        let mut tokens1 = tokenize(input1)?;
+        let prog1 = parse_prog(tokens1.as_mut_slice())?;
         let value1 = eval(prog1.0)?;
         let exp1 = Value {
             ty: Type::Float.into(),

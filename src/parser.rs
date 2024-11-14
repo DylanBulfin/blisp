@@ -1,3 +1,4 @@
+
 use crate::error::{InterpretError, InterpreteResult};
 
 use crate::{
@@ -83,7 +84,7 @@ impl TryFrom<Token> for ParseToken {
     }
 }
 
-pub fn parse_prog(tokens: &[Token]) -> ParseResult {
+pub fn parse_prog(tokens: &mut [Token]) -> ParseResult {
     let (child, cnt) = parse_expr(tokens)?;
     let node = rule_node_helper!(Prog, child);
 
@@ -98,9 +99,9 @@ pub fn parse_prog(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_expr(tokens: &[Token]) -> ParseResult {
+fn parse_expr(tokens: &mut [Token]) -> ParseResult {
     if tokens[0] == Token::LParen {
-        let (child, cnt) = parse_expr_body(&tokens[1..])?;
+        let (child, cnt) = parse_expr_body(&mut tokens[1..])?;
         let node = rule_node_helper!(Expr, [child]);
 
         if tokens[cnt + 1] == Token::RParen {
@@ -121,17 +122,17 @@ fn parse_expr(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_expr_body(tokens: &[Token]) -> ParseResult {
-    match &tokens[0] {
+fn parse_expr_body(tokens: &mut [Token]) -> ParseResult {
+    match &mut tokens[0] {
         Token::Reserved(_) => {
-            let (child, cnt) = parse_func_call(&tokens[0..])?;
+            let (child, cnt) = parse_func_call(&mut tokens[0..])?;
             let node = rule_node_helper!(ExprBody, child);
 
             Ok((node, cnt))
         }
         val_pattern!() => {
             // We have <Val> and need to process it
-            let (child, cnt) = parse_val(&tokens[0..])?;
+            let (child, cnt) = parse_val(&mut tokens[0..])?;
             let node = rule_node_helper!(ExprBody, child);
 
             Ok((node, cnt))
@@ -144,17 +145,17 @@ fn parse_expr_body(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_func_call(tokens: &[Token]) -> ParseResult {
+fn parse_func_call(tokens: &mut [Token]) -> ParseResult {
     let func = tokens[0].assert_reserved()?;
 
-    let (child, cnt) = parse_args(&tokens[1..])?;
-    let node = rule_node_helper!(FuncCall, [Node::Leaf(ParseToken::from(*func)), child]);
+    let (child, cnt) = parse_args(&mut tokens[1..])?;
+    let node = rule_node_helper!(FuncCall, [Node::Leaf(ParseToken::from(func)), child]);
 
     Ok((node, cnt + 1))
 }
 
-fn parse_args(tokens: &[Token]) -> ParseResult {
-    match &tokens[0] {
+fn parse_args(tokens: &mut [Token]) -> ParseResult {
+    match &mut tokens[0] {
         val_pattern!() => {
             // We have <Val> and need to process it
             let (val, val_cnt) = parse_val(tokens)?;
@@ -166,7 +167,7 @@ fn parse_args(tokens: &[Token]) -> ParseResult {
                 {
                     (rule_node_helper!(Args, val), val_cnt)
                 } else {
-                    let (tail, tail_cnt) = parse_args(&tokens[val_cnt..])?;
+                    let (tail, tail_cnt) = parse_args(&mut tokens[val_cnt..])?;
                     (rule_node_helper!(Args, [val, tail]), val_cnt + tail_cnt)
                 },
             )
@@ -179,8 +180,8 @@ fn parse_args(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_val(tokens: &[Token]) -> ParseResult {
-    match &tokens[0] {
+fn parse_val(tokens: &mut [Token]) -> ParseResult {
+    match &mut tokens[0] {
         Token::LBrack => {
             let (child, cnt) = parse_list(tokens)?;
             let node = rule_node_helper!(Val, child);
@@ -195,7 +196,7 @@ fn parse_val(tokens: &[Token]) -> ParseResult {
         }
         // terminals specifies that we want to leave out LBrack and LParen
         val_pattern!(terminals) => {
-            let child = Node::Leaf(tokens[0].clone().try_into()?);
+            let child = Node::Leaf(std::mem::take(&mut tokens[0]).try_into()?);
             let node = rule_node_helper!(Val, child);
 
             Ok((node, 1))
@@ -204,10 +205,10 @@ fn parse_val(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_list(tokens: &[Token]) -> ParseResult {
+fn parse_list(tokens: &mut [Token]) -> ParseResult {
     if tokens[0] == Token::LBrack {
-        let (child, cnt) = parse_list_body(&tokens[1..])?;
-        let node = rule_node_helper!(List, [child.clone()]);
+        let (child, cnt) = parse_list_body(&mut tokens[1..])?;
+        let node = rule_node_helper!(List, [child]);
 
         if tokens[cnt + 1] == Token::RBrack {
             Ok((node, cnt + 2))
@@ -223,8 +224,8 @@ fn parse_list(tokens: &[Token]) -> ParseResult {
     }
 }
 
-fn parse_list_body(tokens: &[Token]) -> ParseResult {
-    match &tokens[0] {
+fn parse_list_body(tokens: &mut [Token]) -> ParseResult {
+    match &mut tokens[0] {
         val_pattern!() => {
             // We have <Val> and need to process it
             let (val, val_cnt) = parse_val(tokens)?;
@@ -236,7 +237,7 @@ fn parse_list_body(tokens: &[Token]) -> ParseResult {
                 {
                     (rule_node_helper!(ListBody, val), val_cnt)
                 } else {
-                    let (tail, tail_cnt) = parse_list_body(&tokens[val_cnt..])?;
+                    let (tail, tail_cnt) = parse_list_body(&mut tokens[val_cnt..])?;
                     (rule_node_helper!(ListBody, [val, tail]), val_cnt + tail_cnt)
                 },
             )
@@ -252,14 +253,6 @@ fn parse_list_body(tokens: &[Token]) -> ParseResult {
 // Want to create functions that "execute a rule" by gobbling tokens and return Nodes
 pub struct ParseTree {
     prog: Node,
-}
-
-impl ParseTree {
-    pub fn init(input: Vec<Token>) -> InterpreteResult<Self> {
-        let (prog, _) = parse_prog(&input)?;
-
-        Ok(Self { prog })
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -310,15 +303,13 @@ impl RuleNodeData {
 #[cfg(test)]
 mod tests {
     use crate::{
-        blisp::{
-            lexer::{tokenize, NumLiteral, Token, Type},
-            macros::{
-                assert_fails, assert_fails_parser, func_call_node_helper, list_node_helper,
-                prog_node_helper, val_node_helper,
-            },
-            parser::parse_val,
-        },
         error::InterpreTestResult,
+        lexer::{tokenize, NumLiteral, Token, Type},
+        macros::{
+            assert_fails, assert_fails_parser, func_call_node_helper, list_node_helper,
+            prog_node_helper, val_node_helper,
+        },
+        parser::parse_val,
     };
 
     use super::*;
@@ -329,9 +320,9 @@ mod tests {
                 $(
                     {
                         let input = $input.chars().collect();
-                        let tokens = tokenize(input)?;
+                        let mut tokens = tokenize(input)?;
 
-                        assert_eq!(parse_prog(&tokens)?, ($node, $count));
+                        assert_eq!(parse_prog(&mut tokens)?, ($node, $count));
                     }
                 )+
 

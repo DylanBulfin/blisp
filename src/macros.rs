@@ -48,8 +48,8 @@ macro_rules! assert_fails_parser {
     ($testname:ident, $input:literal $(;$message:literal)?) => {
         $crate::macros::import!(*);
         assert_fails!($testname => {
-            if let Ok(tokens) = tokenize($input.chars().collect()) {
-                if let Err(e) = parse_prog(tokens.as_slice()) {
+            if let Ok(mut tokens) = tokenize($input.chars().collect()) {
+                if let Err(e) = parse_prog(tokens.as_mut_slice()) {
                     panic!("{}", e);
                 }
             }
@@ -393,11 +393,11 @@ mod tests {
         // Since I went through the trouble of defining these test nodes I may as well
         // use them for direct testing
 
-        let tokens1 = tokenize("([12.4 'c' \"ABCD\"])".chars().collect())?;
-        let tokens2 = tokenize("(+ 13.5 'd' [12.4 'c' \"ABCD\"])".chars().collect())?;
+        let mut tokens1 = tokenize("([12.4 'c' \"ABCD\"])".chars().collect())?;
+        let mut tokens2 = tokenize("(+ 13.5 'd' [12.4 'c' \"ABCD\"])".chars().collect())?;
 
-        let node1 = parse_prog(tokens1.as_slice())?;
-        let node2 = parse_prog(tokens2.as_slice())?;
+        let node1 = parse_prog(tokens1.as_mut_slice())?;
+        let node2 = parse_prog(tokens2.as_mut_slice())?;
 
         let exp1 = Node::Rule(RuleNodeData::new(
             Rule::Prog,

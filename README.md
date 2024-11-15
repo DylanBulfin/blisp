@@ -1,5 +1,5 @@
 # BLisp
-Sfor 'Basic Lisp', pronounced 'bee-lisp' so as to rhyme with 'ELisp', this is a 
+Short for 'Basic Lisp', pronounced 'bee-lisp' so as to rhyme with 'ELisp', this is a 
 custom Lisp dialect with a very limited instruction set. I am not very familiar with Lisp 
 so it may or may not end up looking anything like other Lisp variants. 
 

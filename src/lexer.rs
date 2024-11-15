@@ -162,6 +162,7 @@ pub enum ReservedIdent {
     // Convenience
     Eval,
     ToString,
+    Return,
 }
 
 impl TryFrom<&str> for ReservedIdent {
@@ -194,6 +195,7 @@ impl TryFrom<&str> for ReservedIdent {
             "take" => Ok(Self::Take),
             "eval" => Ok(Self::Eval),
             "tostring" => Ok(Self::ToString),
+            "return" => Ok(Self::Return),
             _ => Err("Not a valid reserved identifier".into()),
         }
     }

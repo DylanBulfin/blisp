@@ -7,6 +7,11 @@ BLisp used to be hosted in
 [my interprete-rs repository](https://github.com/DylanBulfin/interprete-rs). Any history 
 before this repo's original commit can be found there. 
 
+## Status
+It is nearing completion correctness-wise (I hope) but I've recently noticed a lot of 
+performance issues that could come with how I handle collections and cloning. I intend to
+redo at least some of it to be more performant, changing things in-place and whatnot.
+
 ## Control Flow
 Each BLisp program is a single lisp statement, which simplifies the control flow. If you 
 want multiple statements you must construct a list from them (explained later on)

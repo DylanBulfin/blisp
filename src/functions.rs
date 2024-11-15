@@ -44,6 +44,7 @@ pub fn eval_function(
         ReservedIdent::Def => eval_def(args, state),
         ReservedIdent::Set => eval_set(args, state),
         ReservedIdent::Init => eval_init(args, state),
+        ReservedIdent::Return => eval_return(args),
         _ => unimplemented!(),
     }
 }
@@ -71,7 +72,8 @@ pub fn get_arg_types(func: ReservedIdent) -> Vec<ArgumentType> {
         | ReservedIdent::Read
         | ReservedIdent::Eval
         | ReservedIdent::ToString
-        | ReservedIdent::Not => vec![ArgumentType::Value],
+        | ReservedIdent::Not
+        | ReservedIdent::Return => vec![ArgumentType::Value],
 
         ReservedIdent::Set | ReservedIdent::Def => vec![ArgumentType::Ident, ArgumentType::Value],
 
@@ -153,6 +155,7 @@ macro_rules! eval_math_func {
                 Type::List(_) => unimplemented!(),
                 _ => Err(format!("Unable to {} values of type {:?}", stringify!($func), ct).into()),
             },
+            AbstractType::Return => Err(format!("Unable to {} values of type Return", stringify!($func)).into())
         }
     }};
 }
@@ -255,6 +258,9 @@ macro_rules! eval_cmp_function {
                 Type::List(_) => unimplemented!(),
                 _ => Err(format!("Unable to {} values of type {:?}", stringify!($func), ct).into()),
             },
+            AbstractType::Return => {
+                Err(format!("Unable to {} values of type Return", stringify!($func)).into())
+            }
         }
     }};
 }
@@ -458,6 +464,16 @@ pub fn eval_set(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult<
     state.set_var(ident.to_string(), val.clone())?;
 
     Ok(().into())
+}
+
+pub fn eval_return(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 1);
+
+    let mut val = args.pop().unwrap().try_get_val()?.clone();
+
+    val.set_ty(AbstractType::Return);
+
+    Ok(val)
 }
 
 #[cfg(test)]
@@ -755,6 +771,65 @@ mod tests {
     }
 
     #[test]
-    fn basic_var_test()->InterpreTestResult {
+    fn basic_var_test() -> InterpreTestResult {
+        do_interpret_test!(
+            [
+                "
+                ([
+                    (def a 10f) 
+                    (eval (return a))
+                ])
+                ",
+                Value::new(AbstractType::Return, ValueData::Float(10.0))
+            ],
+            [
+                "
+                ([
+                    (init a float) 
+                    (set a 12)
+                    (return a)
+                ])
+                ",
+                Value::new(AbstractType::Return, ValueData::Float(12.0))
+            ],
+            [
+                "
+                ([
+                    (init a uint) 
+                    (set a 1)
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (return a)
+                ])
+                ",
+                Value::new(AbstractType::Return, ValueData::UInt(9))
+            ],
+            [
+                "
+                ([
+                    (init a uint) 
+                    (set a 1)
+                    (return a)
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                    (set a (+ a 1))
+                ])
+                ",
+                Value::new(AbstractType::Return, ValueData::UInt(1))
+            ]
+        );
+
+        Ok(())
     }
 }

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     error::{InterpreTestResult, InterpretError, InterpreteResult},
     functions::eval_function,
-    macros::leaf_node_pattern,
+    macros::{leaf_node_pattern, rule_node_helper},
 };
 
 use super::{
@@ -47,6 +47,9 @@ impl State {
                     AbstractType::List => {
                         return Err("Cannot create a variable with abstract list type".into())
                     }
+                    AbstractType::Return => {
+                        return Err("Cannot create a variable with Return type".into())
+                    }
                 };
                 e.insert((ty, Some(val)));
                 Ok(())
@@ -69,9 +72,11 @@ impl State {
         }
     }
 
-    pub fn set_var(&mut self, ident: String, val: Value) -> InterpreteResult<()> {
+    pub fn set_var(&mut self, ident: String, mut val: Value) -> InterpreteResult<()> {
         match self.vars.entry(ident) {
             Entry::Occupied(mut e) => {
+                val.ty = AbstractType::coerce_types(val.ty, e.get().0.clone().into())?;
+                val.update_data()?;
                 e.get_mut().1 = Some(val);
                 Ok(())
             }
@@ -96,6 +101,8 @@ pub enum AbstractType {
     Number,
     NegNumber,
     List,
+    // May change how I implement returning at some point
+    Return,
 }
 
 impl AbstractType {
@@ -166,7 +173,9 @@ impl AbstractType {
                         Err(format!("Unable to coerce List into {:?}", ty).into())
                     }
                 }
+                AbstractType::Return => Err("Attempt to coerce into Return type".into()),
             },
+            AbstractType::Return => Err("Attempt to coerce Return type".into()),
         }
     }
 }
@@ -213,6 +222,24 @@ impl Value {
         Self {
             ty: AbstractType::NegNumber,
             val: ValueData::NegNumber(val),
+        }
+    }
+
+    pub fn update_data(&mut self) -> InterpreteResult<()> {
+        if let AbstractType::ConcreteType(ct) = &self.ty {
+            match ct {
+                Type::Int => self.val = ValueData::Int(self.try_as_int()?),
+                Type::UInt => self.val = ValueData::UInt(self.try_as_uint()?),
+                Type::Float => self.val = ValueData::Float(self.try_as_float()?),
+                Type::Unit => self.val = ValueData::Unit,
+                Type::Char => self.val = ValueData::Char(self.try_as_char()?),
+                Type::Bool => self.val = ValueData::Bool(self.try_as_bool()?),
+                Type::List(_) => unimplemented!(),
+            }
+
+            Ok(())
+        } else {
+            Err(format!("Can't update data type on non-concrete type {:?}", self).into())
         }
     }
 
@@ -313,6 +340,10 @@ impl Value {
             ValueData::Bool(b) => Ok(b),
             _ => Err(format!("Tried to convert invalid value to bool: {:?}", self).into()),
         }
+    }
+
+    pub fn set_ty(&mut self, ty: AbstractType) {
+        self.ty = ty;
     }
 }
 
@@ -596,23 +627,6 @@ pub fn eval_node(node: Node) -> InterpreteResult<Value> {
 //    }
 //}
 
-fn eval_leaf_node(node: Node, state: &State) -> InterpreteResult<Value> {
-    if let Node::Leaf(tok) = node {
-        match tok {
-            ParseToken::NumLiteral(n) => n.try_into(),
-            ParseToken::CharLiteral(c) => Ok(c.into()),
-            ParseToken::UnitLiteral => Ok(().into()),
-            ParseToken::StringLiteral(s) => Ok(s.into()),
-            // I think this clone is unavoidable. We can't return a reference because
-            // other Values are created locally
-            ParseToken::Ident(i) => state.get_var(&i).cloned(),
-            t => Err(format!("Expected literal or identifier, found {:?}", t).into()),
-        }
-    } else {
-        Err(format!("Expected leaf node, got {:?}", node).into())
-    }
-}
-
 fn eval_prog_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     if let Node::Rule(RuleNodeData {
         rule: Rule::Prog,
@@ -633,7 +647,9 @@ fn eval_expr_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     }) = node
     {
         assert!(children.len() == 1);
-        eval_expr_body_node(children.pop().unwrap(), state)
+        let val = eval_expr_body_node(children.pop().unwrap(), state)?;
+
+        Ok(val)
     } else {
         Err(format!("Expected Expr node, found: {:?}", node).into())
     }
@@ -668,7 +684,7 @@ fn eval_expr_body_node(node: Node, state: &mut State) -> InterpreteResult<Value>
 }
 
 fn eval_val_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
-    if let rule_node_pattern!(Val;mut children) = node {
+    if let rule_node_pattern!(Val; mut children) = node {
         assert!(children.len() == 1);
 
         match children.pop().unwrap() {
@@ -677,10 +693,26 @@ fn eval_val_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
             leaf_node_pattern!(NumLiteral(n)) => n.try_into(),
             leaf_node_pattern!(BoolLiteral(n)) => Ok(n.into()),
             leaf_node_pattern!(UnitLiteral) => Ok(().into()),
-            leaf_node_pattern!(Ident(i)) => state.get_var(&i).cloned(),
+            leaf_node_pattern!(Ident(s)) => state.get_var(&s).cloned(),
             rule_node_pattern!(List => node) => eval_list_node(node, state),
             rule_node_pattern!(Expr => node) => eval_expr_node(node, state),
             n => Err(format!("Encountered invalid node when evaluating Val: {:?}", n).into()),
+        }
+    } else {
+        Err(format!("Expected Val node, found: {:?}", node).into())
+    }
+}
+
+fn eval_special_arg(node: Node) -> InterpreteResult<Argument> {
+    if let rule_node_pattern!(Val; mut children) = node {
+        match children.pop().unwrap() {
+            leaf_node_pattern!(Ident(s)) => Ok(Argument::Ident(s)),
+            leaf_node_pattern!(Type(s)) => Ok(Argument::Type(s)),
+            n => Err(format!(
+                "Encountered invalid node when evaluating special argument: {:?}",
+                n
+            )
+            .into()),
         }
     } else {
         Err(format!("Expected Val node, found: {:?}", node).into())
@@ -695,10 +727,22 @@ fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value>
 
         match children.pop().unwrap() {
             leaf_node_pattern!(Reserved(rsv)) => {
-                let func = rsv;
-                let args = eval_args_node(args_node, state)?;
+                // The number of Val-type arguments that should be skipped at the start
+                let cnt = match rsv {
+                    ReservedIdent::Init => 2,
+                    ReservedIdent::Def | ReservedIdent::Set => 1,
+                    _ => 0,
+                };
 
-                eval_function(func, args, state)
+                let args = eval_args_node(args_node, state, cnt)?;
+
+                for arg in args.iter() {
+                    if arg.is_val() && arg.try_get_val_type()? == AbstractType::Return {
+                        return Ok(arg.try_get_val()?.clone());
+                    }
+                }
+
+                eval_function(rsv, args, state)
             }
             n => Err(format!("Expected function name, found {:?}", n).into()),
         }
@@ -707,21 +751,51 @@ fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value>
     }
 }
 
-fn eval_args_node(node: Node, state: &mut State) -> InterpreteResult<Vec<Argument>> {
+fn eval_args_node(node: Node, state: &mut State, cnt: usize) -> InterpreteResult<Vec<Argument>> {
+    if cnt > 0 {
+        if let rule_node_pattern!(Args; mut children) = node {
+            if children.len() == 1 {
+                let child = children.pop().unwrap();
+
+                return Ok(vec![eval_special_arg(child)?]);
+            } else {
+                let (tail, arg) = (children.pop().unwrap(), children.pop().unwrap());
+
+                return Ok([eval_special_arg(arg)?]
+                    .iter()
+                    .chain(eval_args_node(tail, state, cnt - 1)?.iter())
+                    .cloned()
+                    .collect());
+            }
+        } else {
+            return Err(format!(
+                "Found normal Value where Type or Ident was expected: {:?}",
+                node
+            )
+            .into());
+        }
+    }
+
     if let rule_node_pattern!(Args; mut children) = node {
         if children.len() == 1 {
             // Reached terminal state, nearly done
             match children.pop().unwrap() {
                 rule_node_pattern!(Val => node) => {
-                    Ok([eval_val_node(node, state)?.into()].to_vec())
+                    let val = eval_val_node(node, state)?;
+
+                    Ok([val.into()].to_vec())
                 }
                 n => Err(format!("Expected Val while parsing ListBody, found: {:?}", n).into()),
             }
         } else {
             assert!(children.len() == 2);
 
-            let mut tail = eval_args_node(children.pop().unwrap(), state)?;
+            let mut tail = eval_args_node(children.pop().unwrap(), state, 0)?;
             let val = eval_val_node(children.pop().unwrap(), state)?;
+
+            if val.ty == AbstractType::Return {
+                return Ok([val.into()].to_vec());
+            }
 
             let mut res = vec![val.into()];
             res.append(&mut tail);
@@ -740,10 +814,16 @@ fn eval_list_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     }) = node
     {
         assert!(children.len() == 1);
+
+        let val = eval_list_body_node(children.pop().unwrap(), state)?;
+        if val.ty == AbstractType::Return {
+            return Ok(val.clone());
+        }
+
         if let Value {
             val: ValueData::List(vals),
             ..
-        } = eval_list_body_node(children.pop().unwrap(), state)?
+        } = val
         {
             let ty = check_list_type(vals.iter().collect())?;
 
@@ -765,15 +845,29 @@ fn eval_list_body_node(node: Node, state: &mut State) -> InterpreteResult<Value>
             // Reached terminal state, nearly done
             match children.pop().unwrap() {
                 rule_node_pattern!(Val => node) => {
-                    Ok(list_value_helper![eval_val_node(node, state)?])
+                    let val = eval_val_node(node, state)?;
+
+                    if val.ty == AbstractType::Return {
+                        return Ok(val);
+                    }
+                    Ok(list_value_helper![val])
                 }
                 n => Err(format!("Expected Val while parsing ListBody, found: {:?}", n).into()),
             }
         } else {
             assert!(children.len() == 2);
 
-            let tail = eval_list_body_node(children.pop().unwrap(), state)?;
+            let tail_node = children.pop().unwrap();
+
             let val = eval_val_node(children.pop().unwrap(), state)?;
+            if val.ty == AbstractType::Return {
+                return Ok(val);
+            }
+
+            let tail = eval_list_body_node(tail_node, state)?;
+            if tail.ty == AbstractType::Return {
+                return Ok(tail);
+            }
 
             if let Value {
                 val: ValueData::List(mut vec),
@@ -849,6 +943,7 @@ fn check_list_type(vec: Vec<&Value>) -> InterpreteResult<Type> {
                 .into())
             }
         }
+        AbstractType::Return => Err("Cannot type-check list with return type".into()),
     }
 }
 

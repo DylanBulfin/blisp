@@ -1,3 +1,9 @@
+use std::{
+    io::{Read, Write},
+    thread,
+    time::Duration,
+};
+
 use crate::{
     error::InterpreteResult,
     interpreter::{AbstractType, ValueData},
@@ -12,11 +18,15 @@ use super::{
 //TODO: At this point every value's type should have been solidified. I should create a
 // new type ConcreteValue or something that enforces this
 
-pub fn eval_function(
+pub fn eval_function<R, W>(
     func: ReservedIdent,
     args: Vec<Argument>,
-    state: &mut State,
-) -> InterpreteResult<Value> {
+    state: &mut State<R, W>,
+) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     assert_eq!(
         args.iter().map(Argument::get_type).collect::<Vec<_>>(),
         get_arg_types(func)
@@ -45,7 +55,11 @@ pub fn eval_function(
         ReservedIdent::Set => eval_set(args, state),
         ReservedIdent::Init => eval_init(args, state),
         ReservedIdent::Return => eval_return(args),
-        _ => unimplemented!(),
+        ReservedIdent::Read => eval_read(args, state),
+        ReservedIdent::Write => eval_write(args, state),
+        ReservedIdent::While => Err("While loop shouldn't be dispatched to eval_function".into()),
+        ReservedIdent::If => Err("If statement shouldn't be dispatched to eval_function".into()),
+        ReservedIdent::Sleep => eval_sleep(args),
     }
 }
 
@@ -73,7 +87,8 @@ pub fn get_arg_types(func: ReservedIdent) -> Vec<ArgumentType> {
         | ReservedIdent::Eval
         | ReservedIdent::ToString
         | ReservedIdent::Not
-        | ReservedIdent::Return => vec![ArgumentType::Value],
+        | ReservedIdent::Return
+        | ReservedIdent::Sleep => vec![ArgumentType::Value],
 
         ReservedIdent::Set | ReservedIdent::Def => vec![ArgumentType::Ident, ArgumentType::Value],
 
@@ -155,7 +170,7 @@ macro_rules! eval_math_func {
                 Type::List(_) => unimplemented!(),
                 _ => Err(format!("Unable to {} values of type {:?}", stringify!($func), ct).into()),
             },
-            AbstractType::Return => Err(format!("Unable to {} values of type Return", stringify!($func)).into())
+            ty => Err(format!("Unable to {} values of type {:?}", stringify!($func), ty).into())
         }
     }};
 }
@@ -258,9 +273,7 @@ macro_rules! eval_cmp_function {
                 Type::List(_) => unimplemented!(),
                 _ => Err(format!("Unable to {} values of type {:?}", stringify!($func), ct).into()),
             },
-            AbstractType::Return => {
-                Err(format!("Unable to {} values of type Return", stringify!($func)).into())
-            }
+            ty => Err(format!("Unable to {} values of type {:?}", stringify!($func), ty).into()),
         }
     }};
 }
@@ -427,7 +440,11 @@ pub fn eval_eval(args: Vec<Argument>) -> InterpreteResult<Value> {
     Ok(().into())
 }
 
-pub fn eval_def(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult<Value> {
+pub fn eval_def<R, W>(mut args: Vec<Argument>, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     assert!(args.len() == 2);
 
     let (arg2, arg1) = (args.pop().unwrap(), args.pop().unwrap());
@@ -440,7 +457,11 @@ pub fn eval_def(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult<
     Ok(().into())
 }
 
-pub fn eval_init(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult<Value> {
+pub fn eval_init<R, W>(mut args: Vec<Argument>, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     assert!(args.len() == 2);
 
     let (arg2, arg1) = (args.pop().unwrap(), args.pop().unwrap());
@@ -453,7 +474,11 @@ pub fn eval_init(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult
     Ok(().into())
 }
 
-pub fn eval_set(mut args: Vec<Argument>, state: &mut State) -> InterpreteResult<Value> {
+pub fn eval_set<R, W>(mut args: Vec<Argument>, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     assert!(args.len() == 2);
 
     let (arg2, arg1) = (args.pop().unwrap(), args.pop().unwrap());
@@ -476,42 +501,58 @@ pub fn eval_return(mut args: Vec<Argument>) -> InterpreteResult<Value> {
     Ok(val)
 }
 
-// TODO think more about how to do this. I need a way to signal to the interpretation code
-// when to loop. And much more importantly I need to find a way to go back in the tree.
-// Having parent links is maybe possible but complicates the logic a ***lot***. As an
-// alternative perhaps I keep a secondary tree and whenever I move away from a node I add
-// it to the secondary tree. But we need to consider what to do about returns in the
-// middle of statement. My first thought is to either overload the Return type, or create
-// a new AbstractType variant that represents a jump, e.g. Goto. Then the FuncCall method
-// can handle this jump
-pub fn eval_while(mut args: Vec<Argument>) -> InterpreteResult<Value> {
-    assert!(args.len() == 2);
+pub fn eval_read<R, W>(mut args: Vec<Argument>, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    Ok(state
+        .read(arg.try_get_val()?.try_as_uint()? as usize)?
+        .into())
+}
+
+pub fn eval_write<R, W>(mut args: Vec<Argument>, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    state.write(arg.try_get_val()?.clone())?;
+
+    Ok(().into())
+}
+
+pub fn eval_sleep(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    thread::sleep(Duration::from_millis(arg.try_get_val()?.try_as_uint()?));
+
+    Ok(().into())
 }
 
 #[cfg(test)]
 mod tests {
 
+    use std::io::Cursor;
+
     use crate::{
         error::{InterpreTestResult, InterpreteResult},
-        interpreter::{eval, AbstractType, Argument, State, Value, ValueData},
+        interpreter::{eval, eval_custom, AbstractType, Argument, State, Value, ValueData},
         lexer::{tokenize, Type},
-        macros::list_value_helper,
+        macros::{do_interpret_test, list_value_helper},
         parser::parse_prog,
     };
 
     use super::eval_add;
-
-    macro_rules! do_interpret_test {
-        ($([$input:expr, $output:expr]),+) => {{
-            $(
-                let mut tokens = tokenize($input.chars().collect())?;
-                let node = parse_prog(&mut tokens)?;
-                let val = eval(node)?;
-
-                assert_eq!(val, $output);
-            )+
-        }};
-    }
 
     #[test]
     fn eval_add_test() -> InterpreTestResult {
@@ -841,6 +882,56 @@ mod tests {
                 Value::new(AbstractType::Return, ValueData::UInt(1))
             ]
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_write() -> InterpreTestResult {
+        let mut in_vec: Vec<u8> = (b'a'..=b'z')
+            .chain(b'A'..=b'Z')
+            .chain(b'0'..=b'9')
+            .collect();
+        let mut out_vec: Vec<u8> = vec![0; 1000];
+
+        let in_buf = Cursor::new(in_vec.as_mut_slice());
+        let out_buf = Cursor::new(out_vec.as_mut_slice());
+
+        let input = "
+        ([
+            (def x 0u)
+            (while (lt x 10) [
+                (set x (+ x 1))
+                (write x)
+                (write (read 6))
+            ])
+            (return x)
+        ])"
+        .chars()
+        .collect();
+
+        let mut tokens = tokenize(input)?;
+        let node = parse_prog(&mut tokens)?;
+
+        let val = eval_custom(node, in_buf, out_buf)?;
+
+        assert_eq!(val, Value::new(AbstractType::Return, ValueData::UInt(10)));
+
+        let mut exp_vec = Vec::new();
+
+        for i in 0..10 {
+            exp_vec.append(&mut (i + 1).to_string().bytes().collect());
+            exp_vec.push(b'\n');
+            exp_vec.push(b'"');
+            exp_vec.append(&mut (in_vec[(i * 6)..((i + 1) * 6)].to_vec()));
+            exp_vec.push(b'"');
+            exp_vec.push(b'\n');
+        }
+
+        let adj = out_vec.len() - exp_vec.len();
+        exp_vec.append(&mut vec![0; adj]);
+
+        assert_eq!(out_vec, exp_vec);
 
         Ok(())
     }

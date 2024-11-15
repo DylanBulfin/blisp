@@ -9,6 +9,7 @@ use std::{
 enum InterpretErrorType {
     None,
     IOError,
+    FmtError,
 }
 
 impl Display for InterpretErrorType {
@@ -16,6 +17,7 @@ impl Display for InterpretErrorType {
         f.write_str(match self {
             Self::None => "None",
             Self::IOError => "IOError",
+            Self::FmtError => "FmtError",
         })
     }
 }
@@ -63,6 +65,15 @@ impl From<io::Error> for InterpretError {
     fn from(value: io::Error) -> Self {
         Self {
             err_type: InterpretErrorType::IOError,
+            message: value.to_string(),
+        }
+    }
+}
+
+impl From<fmt::Error> for InterpretError {
+    fn from(value: fmt::Error) -> Self {
+        Self {
+            err_type: InterpretErrorType::FmtError,
             message: value.to_string(),
         }
     }

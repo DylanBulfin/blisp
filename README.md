@@ -12,6 +12,11 @@ It is nearing completion correctness-wise (I hope) but I've recently noticed a l
 performance issues that could come with how I handle collections and cloning. I intend to
 redo at least some of it to be more performant, changing things in-place and whatnot.
 
+### Remaining implementation
+- I would like to expand certain functions to accept lists. Specifically match functions.
+E.g. `(add [a b c] [d e f] = ([(+ a d) (+ b e) (+ c f)])`.
+- I would like to include basic collection methods like `prod` and `sum`
+
 ## Control Flow
 Each BLisp program is a single lisp statement, which simplifies the control flow. If you 
 want multiple statements you must construct a list from them (explained later on)
@@ -131,9 +136,9 @@ context that a literal of the same type would be valid (and a few others).
     - `(print "ABC")` prints "ABC" to stdout and returns it for convenience
     - `(print T) -> T` is defined for `T: string`
 - `read`
-    - `(read x)` reads a line from stdin and stores it in variable `x`, returning value
-    - `(read T) -> U` is defined for `T: string | (), U: string`, e.g. you can use 
-    `(read ())` to avoid providing a var
+    - `(read 10)` reads up to 10 characters from the configured reader, returning result 
+    as `string`
+    - `(read T) -> U` is defined for `T: uint | int > 0 | number, U: string`
 
 ### Control Flow
 - `?` or `if`

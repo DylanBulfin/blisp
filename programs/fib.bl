@@ -1,0 +1,18 @@
+([
+  (def n1 0u)
+  (def n2 1u)
+  (def tmp 0u)
+
+  (write n1)
+  (write n2)
+
+  (while true [
+    (set tmp n1)
+    (set n1 n2)
+    (set n2 (+ n2 tmp))
+
+    (write n2)
+
+    (sleep 500)
+  ])
+])

@@ -163,6 +163,7 @@ pub enum ReservedIdent {
     Eval,
     ToString,
     Return,
+    Sleep,
 }
 
 impl TryFrom<&str> for ReservedIdent {
@@ -196,6 +197,7 @@ impl TryFrom<&str> for ReservedIdent {
             "eval" => Ok(Self::Eval),
             "tostring" => Ok(Self::ToString),
             "return" => Ok(Self::Return),
+            "sleep" => Ok(Self::Sleep),
             _ => Err("Not a valid reserved identifier".into()),
         }
     }

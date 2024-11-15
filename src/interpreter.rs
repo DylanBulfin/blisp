@@ -1,6 +1,7 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::{format, Display, Formatter, Write},
+    fmt::{format, Display, Formatter},
+    io::{stdin, stdout, BufRead, Read, Stdin, Stdout, Write},
 };
 
 use crate::{
@@ -16,14 +17,36 @@ use super::{
 };
 
 /// Contains variable dictionary
-pub struct State {
+pub struct State<R, W>
+where
+    R: Read,
+    W: Write,
+{
     vars: HashMap<String, (Type, Option<Value>)>,
+    reader: R,
+    writer: W,
 }
 
-impl State {
-    pub fn new() -> Self {
+impl State<Stdin, Stdout> {
+    pub fn new_with_defaults() -> Self {
         Self {
             vars: HashMap::new(),
+            reader: stdin(),
+            writer: stdout(),
+        }
+    }
+}
+
+impl<R, W> State<R, W>
+where
+    R: Read,
+    W: Write,
+{
+    pub fn new(reader: R, writer: W) -> Self {
+        Self {
+            vars: HashMap::new(),
+            reader,
+            writer,
         }
     }
 
@@ -47,9 +70,7 @@ impl State {
                     AbstractType::List => {
                         return Err("Cannot create a variable with abstract list type".into())
                     }
-                    AbstractType::Return => {
-                        return Err("Cannot create a variable with Return type".into())
-                    }
+                    ty => return Err(format!("Cannot create a variable with {:?} type", ty).into()),
                 };
                 e.insert((ty, Some(val)));
                 Ok(())
@@ -85,11 +106,24 @@ impl State {
             }
         }
     }
+
+    pub fn write(&mut self, data: Value) -> InterpreteResult<()> {
+        Ok(self.writer.write_fmt(format_args!("{}\n", data))?)
+    }
+
+    pub fn read(&mut self, cnt: usize) -> InterpreteResult<String> {
+        let mut buf = vec![0u8; cnt];
+
+        // Using read_exact for now, probably need to change later
+        self.reader.read_exact(&mut buf)?;
+
+        Ok(buf.into_iter().map(|c| c as char).collect())
+    }
 }
 
-impl Default for State {
+impl Default for State<Stdin, Stdout> {
     fn default() -> Self {
-        Self::new()
+        Self::new_with_defaults()
     }
 }
 
@@ -173,9 +207,9 @@ impl AbstractType {
                         Err(format!("Unable to coerce List into {:?}", ty).into())
                     }
                 }
-                AbstractType::Return => Err("Attempt to coerce into Return type".into()),
+                ty => Err(format!("Attempt to coerce into type {:?}", ty).into()),
             },
-            AbstractType::Return => Err("Attempt to coerce Return type".into()),
+            ty => Err(format!("Attempt to coerce type {:?}", ty).into()),
         }
     }
 }
@@ -609,8 +643,18 @@ pub struct Func {
     args: Vec<Argument>,
 }
 
+pub fn eval_custom<R, W>(node: Node, reader: R, writer: W) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
+    let mut state = State::new(reader, writer);
+
+    eval_prog_node(node, &mut state)
+}
+
 pub fn eval(node: Node) -> InterpreteResult<Value> {
-    let mut state = State::new();
+    let mut state = State::new_with_defaults();
 
     eval_prog_node(node, &mut state)
 }
@@ -627,7 +671,11 @@ pub fn eval_node(node: Node) -> InterpreteResult<Value> {
 //    }
 //}
 
-fn eval_prog_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_prog_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let Node::Rule(RuleNodeData {
         rule: Rule::Prog,
         mut children,
@@ -640,7 +688,11 @@ fn eval_prog_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     }
 }
 
-fn eval_expr_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_expr_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let Node::Rule(RuleNodeData {
         rule: Rule::Expr,
         mut children,
@@ -655,7 +707,11 @@ fn eval_expr_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     }
 }
 
-fn eval_expr_body_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_expr_body_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let Node::Rule(RuleNodeData {
         rule: Rule::ExprBody,
         mut children,
@@ -683,7 +739,11 @@ fn eval_expr_body_node(node: Node, state: &mut State) -> InterpreteResult<Value>
     }
 }
 
-fn eval_val_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_val_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let rule_node_pattern!(Val; mut children) = node {
         assert!(children.len() == 1);
 
@@ -719,7 +779,140 @@ fn eval_special_arg(node: Node) -> InterpreteResult<Argument> {
     }
 }
 
-fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+// For now a while statement never has a value, may add `break` in the future
+fn eval_while_loop<R, W>(args_node: Node, state: &mut State<R, W>) -> InterpreteResult<()>
+where
+    R: Read,
+    W: Write,
+{
+    if let rule_node_pattern!(Args; mut arg_children) = args_node.clone() {
+        assert!(arg_children.len() == 2);
+        let body = arg_children.pop().unwrap();
+        let cond_node = arg_children.pop().unwrap();
+        if let rule_node_pattern!(Val => val_node) = cond_node {
+            let val = eval_val_node(val_node.clone(), state)?;
+            let mut cond = if val.ty == Type::Bool.into() {
+                val.try_as_bool()?
+            } else {
+                return Err(
+                    format!("Expected boolean for while condition, found {:?}", val).into(),
+                );
+            };
+
+            while cond {
+                eval_args_node(body.clone(), state, 0)?;
+
+                // Recalculate the condition in case one of its values has
+                // changed
+                let val = eval_val_node(val_node.clone(), state)?;
+                if val.ty == Type::Bool.into() {
+                    cond = val.try_as_bool()?;
+                } else {
+                    return Err(
+                        format!("Expected boolean for while condition, found {:?}", val).into(),
+                    );
+                }
+            }
+
+            // Always return () from loop
+            Ok(())
+        } else {
+            Err(format!("Expected Val node, found: {:?}", cond_node).into())
+        }
+    } else {
+        Err(format!("Expected Args node, found: {:?}", args_node).into())
+    }
+}
+
+fn eval_if_statement<R, W>(args_node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
+    if let rule_node_pattern!(Args; mut arg_children) = args_node.clone() {
+        assert!(arg_children.len() == 2);
+        let body = arg_children.pop().unwrap();
+        let cond_node = arg_children.pop().unwrap();
+        if let rule_node_pattern!(Val => val_node) = cond_node {
+            let val = eval_val_node(val_node.clone(), state)?;
+            let cond = if val.ty == Type::Bool.into() {
+                val.try_as_bool()?
+            } else {
+                return Err(format!("Expected boolean for if condition, found {:?}", val).into());
+            };
+
+            if cond {
+                // Evaluate and return first argument
+                if let rule_node_pattern!(Args; mut body_children) = body {
+                    assert!(body_children.len() == 2);
+
+                    let (_, arg1) = (body_children.pop(), body_children.pop().unwrap());
+
+                    if let rule_node_pattern!(Val => arg1_val) = arg1 {
+                        eval_val_node(arg1_val, state)
+                    } else {
+                        Err(format!(
+                            "Expected Val node when parsing if statement, found {:?}",
+                            arg1
+                        )
+                        .into())
+                    }
+                } else {
+                    Err(format!(
+                        "Expected Args node when parsing if statement, found {:?}",
+                        body
+                    )
+                    .into())
+                }
+            } else {
+                // Evaluate and return second argument
+                if let rule_node_pattern!(Args; mut body_children) = body {
+                    assert!(body_children.len() == 2);
+
+                    let arg2 = body_children.pop().unwrap();
+
+                    if let rule_node_pattern!(Args; mut arg2_children) = arg2 {
+                        assert!(arg2_children.len() == 1);
+
+                        let arg2_node = arg2_children.pop().unwrap();
+
+                        if let rule_node_pattern!(Val => arg2_val) = arg2_node {
+                            eval_val_node(arg2_val, state)
+                        } else {
+                            Err(format!(
+                                "Expected Val node when parsing second branch of if statement, found {:?}",
+                                arg2_node
+                            )
+                            .into())
+                        }
+                    } else {
+                        Err(format!(
+                            "Expected Args node when parsing second branch of if statement, found {:?}",
+                            arg2
+                        )
+                        .into())
+                    }
+                } else {
+                    Err(format!(
+                        "Expected Args node when parsing if statement, found {:?}",
+                        body
+                    )
+                    .into())
+                }
+            }
+        } else {
+            Err(format!("Expected Val node, found: {:?}", cond_node).into())
+        }
+    } else {
+        Err(format!("Expected Args node, found: {:?}", args_node).into())
+    }
+}
+
+fn eval_func_call_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let rule_node_pattern!(FuncCall; mut children) = node {
         assert!(children.len() == 2);
 
@@ -734,15 +927,22 @@ fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value>
                     _ => 0,
                 };
 
-                let args = eval_args_node(args_node, state, cnt)?;
+                // Control flow needs to be handled in this method
+                if rsv == ReservedIdent::While {
+                    Ok(eval_while_loop(args_node, state)?.into())
+                } else if rsv == ReservedIdent::If {
+                    eval_if_statement(args_node, state)
+                } else {
+                    let args = eval_args_node(args_node, state, cnt)?;
 
-                for arg in args.iter() {
-                    if arg.is_val() && arg.try_get_val_type()? == AbstractType::Return {
-                        return Ok(arg.try_get_val()?.clone());
+                    for arg in args.iter() {
+                        if arg.is_val() && arg.try_get_val_type()? == AbstractType::Return {
+                            return Ok(arg.try_get_val()?.clone());
+                        }
                     }
-                }
 
-                eval_function(rsv, args, state)
+                    eval_function(rsv, args, state)
+                }
             }
             n => Err(format!("Expected function name, found {:?}", n).into()),
         }
@@ -751,7 +951,15 @@ fn eval_func_call_node(node: Node, state: &mut State) -> InterpreteResult<Value>
     }
 }
 
-fn eval_args_node(node: Node, state: &mut State, cnt: usize) -> InterpreteResult<Vec<Argument>> {
+fn eval_args_node<R, W>(
+    node: Node,
+    state: &mut State<R, W>,
+    cnt: usize,
+) -> InterpreteResult<Vec<Argument>>
+where
+    R: Read,
+    W: Write,
+{
     if cnt > 0 {
         if let rule_node_pattern!(Args; mut children) = node {
             if children.len() == 1 {
@@ -807,7 +1015,11 @@ fn eval_args_node(node: Node, state: &mut State, cnt: usize) -> InterpreteResult
     }
 }
 
-fn eval_list_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_list_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let Node::Rule(RuleNodeData {
         rule: Rule::List,
         mut children,
@@ -839,7 +1051,11 @@ fn eval_list_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
     }
 }
 
-fn eval_list_body_node(node: Node, state: &mut State) -> InterpreteResult<Value> {
+fn eval_list_body_node<R, W>(node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
+where
+    R: Read,
+    W: Write,
+{
     if let rule_node_pattern!(ListBody; mut children) = node {
         if children.len() == 1 {
             // Reached terminal state, nearly done
@@ -943,7 +1159,7 @@ fn check_list_type(vec: Vec<&Value>) -> InterpreteResult<Type> {
                 .into())
             }
         }
-        AbstractType::Return => Err("Cannot type-check list with return type".into()),
+        ty => Err(format!("Cannot type-check list with type {:?}", ty).into()),
     }
 }
 
@@ -951,7 +1167,10 @@ fn check_list_type(vec: Vec<&Value>) -> InterpreteResult<Type> {
 mod tests {
 
     use crate::{
-        error::InterpreTestResult, lexer::tokenize, macros::assert_fails, parser::parse_prog,
+        error::InterpreTestResult,
+        lexer::tokenize,
+        macros::{assert_fails, do_interpret_test},
+        parser::parse_prog,
     };
 
     use super::*;
@@ -1109,5 +1328,34 @@ mod tests {
                 "[12, 14, 16, 123512351325]"
             ]
         );
+    }
+
+    #[test]
+    fn while_loop_test() -> InterpreTestResult {
+        do_interpret_test!([
+            "([
+                (def a 10u)
+                (while (lt a 20) (set a (+ a 1)))
+                (return (+ a 5))
+            ])",
+            Value::new(AbstractType::Return, ValueData::UInt(25))
+        ]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn if_statement_test() -> InterpreTestResult {
+        do_interpret_test!([
+            "([
+                (def a 10u)
+                (if (true) (set a (* a 2)) (set a (/ a 2)))
+                (if (ne a 20) (set a 10000) (set a (/ a 3)))
+                (return (+ a 5))
+            ])",
+            Value::new(AbstractType::Return, ValueData::UInt(11))
+        ]);
+
+        Ok(())
     }
 }

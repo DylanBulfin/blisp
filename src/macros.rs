@@ -251,6 +251,18 @@ macro_rules! peek_tok_safe {
     };
 }
 
+macro_rules! do_interpret_test {
+    ($([$input:expr, $output:expr]),+) => {{
+        $(
+            let mut tokens = tokenize($input.chars().collect())?;
+            let node = parse_prog(&mut tokens)?;
+            let val = eval(node)?;
+
+            assert_eq!(val, $output);
+        )+
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
@@ -616,5 +628,6 @@ crate_publish_macros!(
     list_value_helper,
     pop_tok_safe,
     peek_tok_safe,
+    do_interpret_test,
     import,
 );

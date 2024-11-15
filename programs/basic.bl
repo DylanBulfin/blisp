@@ -1,0 +1,14 @@
+(
+  [
+    (def x 0u)
+    (while (lt x 100) [
+      (if (eq x (* 2 (/ x 2))) 
+        (write x)
+        (())
+      )
+      (set x (+ x 1))
+      (sleep 500)
+    ])
+    (return x)
+  ]
+)

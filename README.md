@@ -213,6 +213,13 @@ the second expression. May change later
     ])
     ```
     Without `eval` this would throw a type error trying to match `()` with `string`
+- `return` allows us to exit the program, propagating the specified value. This is useful
+mainly because it allows us to return a result from the main function even if we construct
+it as a list of `()` statements
+    - `return 12` stops the program and returns `12: int`
+- `sleep` halts the execution of the program for a specified time. This is mainly useful 
+to allow us to space out print statements in long-running programs. It will be useful for
+demoing.
 
 ## Grammar
 My previous grammar was too low-level to be useful in the new implementation. Now that the 

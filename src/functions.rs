@@ -476,6 +476,18 @@ pub fn eval_return(mut args: Vec<Argument>) -> InterpreteResult<Value> {
     Ok(val)
 }
 
+// TODO think more about how to do this. I need a way to signal to the interpretation code
+// when to loop. And much more importantly I need to find a way to go back in the tree.
+// Having parent links is maybe possible but complicates the logic a ***lot***. As an
+// alternative perhaps I keep a secondary tree and whenever I move away from a node I add
+// it to the secondary tree. But we need to consider what to do about returns in the
+// middle of statement. My first thought is to either overload the Return type, or create
+// a new AbstractType variant that represents a jump, e.g. Goto. Then the FuncCall method
+// can handle this jump
+pub fn eval_while(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 2);
+}
+
 #[cfg(test)]
 mod tests {
 

@@ -77,8 +77,6 @@ I will support:
 - `list<ty>` (internal representation tbd) is a list of type `ty` (which can be any valid 
 type, including another list)
 - `string` (internal representation tbd) is an alias for `list<char>`
-- `tuple<ty1, ty2>` is a 2-tuple, where the first value is of type `ty1` and the second is 
-of type `ty2`
 - `unit`/`()` represents an empty value. Mostly used to make sequences of functions easier
 
 ### Literals
@@ -138,10 +136,6 @@ one value (may change later)
 - `['a', "bcd"]` is a compilation error since `char` and `string` are incompatible types
 - `[1, 1c]` is a compilation error because there is no implicit coercion from int literal 
 to char (may change)
-
-#### (2-)Tuples
-Removing tuples from the spec for now. They create all sorts of annoying edge cases and 
-aren't that useful anyway
 
 ### Type Coercion 
 To allow for coercion we must define a couple abstract types and a hierarchy. To start we 

@@ -252,7 +252,7 @@ macro_rules! peek_tok_safe {
 }
 
 macro_rules! do_interpret_test {
-    ($([$input:expr, $output:expr]),+) => {{
+    ($([$input:expr, $output:expr]),+ $(,)?) => {{
         $(
             let mut tokens = tokenize($input.chars().collect())?;
             let node = parse_prog(&mut tokens)?;

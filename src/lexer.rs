@@ -156,6 +156,9 @@ pub enum ReservedIdent {
     Concat,
     Prepend,
     Take,
+    Head,
+    Tail,
+    Length,
     // Removed until/unless tuple type is reintroduced
     //Split,
 
@@ -194,6 +197,9 @@ impl TryFrom<&str> for ReservedIdent {
             "concat" => Ok(Self::Concat),
             "prepend" => Ok(Self::Prepend),
             "take" => Ok(Self::Take),
+            "head" => Ok(Self::Head),
+            "tail" => Ok(Self::Tail),
+            "length" => Ok(Self::Length),
             "eval" => Ok(Self::Eval),
             "tostring" => Ok(Self::ToString),
             "return" => Ok(Self::Return),
@@ -899,7 +905,7 @@ mod tests {
     #[test]
     fn reserved_ident_test() -> InterpreTestResult {
         let (input1, output1) = (
-            "(add + sub - div / mul * write read if while eq ne le ge lt gt and or set init def concat prepend take eval tostring)".chars().collect(),
+            "(add + sub - div / mul * write read if while eq ne le ge lt gt and or set init def concat prepend take eval tostring sleep head tail)".chars().collect(),
             [
                 Token::LParen,
                 ReservedIdent::Add.into(),
@@ -930,6 +936,9 @@ mod tests {
                 ReservedIdent::Take.into(),
                 ReservedIdent::Eval.into(),
                 ReservedIdent::ToString.into(),
+                ReservedIdent::Sleep.into(),
+                ReservedIdent::Head.into(),
+                ReservedIdent::Tail.into(),
                 Token::RParen,
                 Token::EOF,
             ]

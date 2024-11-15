@@ -49,12 +49,15 @@ where
         ReservedIdent::ToString => eval_tostring(args),
         ReservedIdent::Concat => eval_concat(args),
         ReservedIdent::Prepend => eval_prepend(args),
-        ReservedIdent::Eval => eval_eval(args),
+        ReservedIdent::Head => eval_head(args),
+        ReservedIdent::Tail => eval_tail(args),
         ReservedIdent::Take => eval_take(args),
+        ReservedIdent::Length => eval_length(args),
         ReservedIdent::Def => eval_def(args, state),
         ReservedIdent::Set => eval_set(args, state),
         ReservedIdent::Init => eval_init(args, state),
         ReservedIdent::Return => eval_return(args),
+        ReservedIdent::Eval => eval_eval(args),
         ReservedIdent::Read => eval_read(args, state),
         ReservedIdent::Write => eval_write(args, state),
         ReservedIdent::While => Err("While loop shouldn't be dispatched to eval_function".into()),
@@ -88,7 +91,10 @@ pub fn get_arg_types(func: ReservedIdent) -> Vec<ArgumentType> {
         | ReservedIdent::ToString
         | ReservedIdent::Not
         | ReservedIdent::Return
-        | ReservedIdent::Sleep => vec![ArgumentType::Value],
+        | ReservedIdent::Sleep
+        | ReservedIdent::Head
+        | ReservedIdent::Tail
+        | ReservedIdent::Length => vec![ArgumentType::Value],
 
         ReservedIdent::Set | ReservedIdent::Def => vec![ArgumentType::Ident, ArgumentType::Value],
 
@@ -539,6 +545,73 @@ pub fn eval_sleep(mut args: Vec<Argument>) -> InterpreteResult<Value> {
     Ok(().into())
 }
 
+pub fn eval_head(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    let val = arg.try_get_val()?.clone();
+
+    match val.ty() {
+        AbstractType::ConcreteType(Type::List(ct)) => {
+            let mut head_val = val
+                .try_as_list()?
+                .first()
+                .ok_or("Unable to find head of list")?
+                .clone();
+            // Need to do this since the values inside a list may or may not have the
+            // right Type and ValueData variant
+            head_val.set_ty((*ct.clone()).into());
+            head_val.update_data()?;
+
+            Ok(head_val)
+        }
+        _ => unimplemented!(),
+    }
+}
+
+pub fn eval_tail(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    let val = arg.try_get_val()?.clone();
+
+    match val.ty() {
+        AbstractType::ConcreteType(Type::List(ct)) => {
+            let mut lst = val.try_as_list()?.iter();
+
+            if lst.len() == 1 {
+                Err("Unable to get tail of list with length <2".into())
+            } else {
+                lst.next().ok_or("Unable to remove head of list")?;
+
+                Ok(Value::new(
+                    AbstractType::ConcreteType(Type::List(ct.clone())),
+                    ValueData::List(lst.cloned().collect()),
+                ))
+            }
+        }
+        _ => unimplemented!(),
+    }
+}
+
+pub fn eval_length(mut args: Vec<Argument>) -> InterpreteResult<Value> {
+    assert!(args.len() == 1);
+
+    let arg = args.pop().unwrap();
+
+    let val = arg.try_get_val()?.clone();
+
+    if val.is_concrete_list() {
+        let lst = val.try_as_list()?.iter();
+
+        Ok(Value::new_number(lst.len() as i64))
+    } else {
+        Err(format!("Expected concrete list, got {:?}", val).into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -932,6 +1005,52 @@ mod tests {
         exp_vec.append(&mut vec![0; adj]);
 
         assert_eq!(out_vec, exp_vec);
+
+        Ok(())
+    }
+
+    #[test]
+    fn head_tail_test() -> InterpreTestResult {
+        do_interpret_test!(
+            ["(head \"ABCD\")", b'A'.into()],
+            ["(head [1 2 14u])", 1u64.into()],
+            [
+                "(tail [1u 2 14])",
+                list_value_helper!(ct: UInt; Value::new_number(2), Value::new_number(14))
+            ],
+            ["(head (tail [1u 2 14]))", 2u64.into()],
+            ["(head (head (tail [[1] [2 4] [3 5]])))", 2i64.into()]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn length_test() -> InterpreTestResult {
+        do_interpret_test!(
+            ["(length \"ABST\")", Value::new_number(4)],
+            ["(head [(length [1 2 3]) 1u 14])", 3u64.into()],
+            [
+                "([
+                    (def lst [1 2 3 4 5 6 7 8 9 10])
+                    (while (gt (length lst) 1) [
+                        (set lst (tail lst))
+                    ])
+                    (return (head lst))
+                ])",
+                Value::new(AbstractType::Return, ValueData::Int(10))
+            ],
+            [
+                "([
+                    (def lst [1 2u 3 4 5 6 7 8 9 10])
+                    (while (gt (length lst) 1) [
+                        (set lst (tail lst))
+                    ])
+                    (return (head lst))
+                ])",
+                Value::new(AbstractType::Return, ValueData::UInt(10))
+            ]
+        );
 
         Ok(())
     }

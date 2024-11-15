@@ -268,7 +268,7 @@ impl Value {
                 Type::Unit => self.val = ValueData::Unit,
                 Type::Char => self.val = ValueData::Char(self.try_as_char()?),
                 Type::Bool => self.val = ValueData::Bool(self.try_as_bool()?),
-                Type::List(_) => unimplemented!(),
+                Type::List(_) => (), // Don't care about types of list values
             }
 
             Ok(())
@@ -439,6 +439,15 @@ impl From<i64> for Value {
         Self {
             ty: Type::Int.into(),
             val: ValueData::Int(value),
+        }
+    }
+}
+
+impl From<u64> for Value {
+    fn from(value: u64) -> Self {
+        Self {
+            ty: Type::UInt.into(),
+            val: ValueData::UInt(value),
         }
     }
 }

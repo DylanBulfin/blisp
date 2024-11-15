@@ -1,11 +1,11 @@
 ([
-  (def n1 0u)
+  (def n1 1u)
   (def n2 1u)
   (def tmp 0u)
   (def res [n1 n2])
   (def cnt 0u)
 
-  (while (lt cnt 60) [
+  (while (lt (length res) 60) [
     (set tmp n1)
     (set n1 n2)
     (set n2 (+ n2 tmp))
@@ -17,5 +17,11 @@
 
   (write "List Members: ")
 
-  (return res)
+  (while true [
+    (write (head res))
+    (if (gt (length res) 1)
+      (set res (tail res))
+      (return ())
+    )
+  ])
 ])

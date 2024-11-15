@@ -8,18 +8,63 @@ BLisp used to be hosted in
 before this repo's original commit can be found there. 
 
 ## Status
-It is nearing completion correctness-wise (I hope) but I've recently noticed a lot of 
-performance issues that could come with how I handle collections and cloning. I intend to
-redo at least some of it to be more performant, changing things in-place and whatnot.
+I believe it is complete with regards to core implementation. I have gotten it working on
+simple but non-trivial programs such as `fib2.bl` and `fib.bl`. I will fix issues that
+come up but likely won't make large changes except those listed in the 'Remaining
+implementation' section below. I now want to focus on performance improvements. This will 
+involve creating some benchmarking programs and testing them with the current code, to get 
+baseline statistics. The general improvements I should make are:
+- Get rid of cloning as much as possible
+    - Instead of cloning values I should make a concerted effort to move them. This
+    involves things like `Argument::try_to_value: fn(self) -> Result<Value>` and `match`ing on
+    actual values instead of references. 
+    - May be useful to define destructuring methods on some types, e.g.
+    `Value::destructure: fn(self) -> Result<(Type, ValueData)>`. I end up avoiding
+    destructuring because full match statements or if let are ugly and take up 3 full
+    lines minimum. Alternatively I can make a standardized macro format. Perhaps even
+    using proc macros?
+- Handle collections more efficiently
+    - A pattern I use commonly is `vec.iter().map(_).collect()` or even
+    `vec.iter().map(_).cloned().collect()`. For this I should try using
+    `vec.into_iter().for_each(_)` or a for loop and editing the vec directly. I should be
+    able to remove `collect` almost entirely unless I'm missing something
 
 ### Remaining implementation
 - I would like to expand certain functions to accept lists. Specifically match functions.
 E.g. `(add [a b c] [d e f] = ([(+ a d) (+ b e) (+ c f)])`.
 - I would like to include basic collection methods like `prod` and `sum`
+- I need to redo the `read` method.
+    - Alternatively add a `readline` method that only works when using `Stdin`
+- Maybe alternative syntax for writes? 
+    - Could also do `writeline` to mimic the current behavior and have `write` do a simple
+    write
+
 
 ## Control Flow
 Each BLisp program is a single lisp statement, which simplifies the control flow. If you 
-want multiple statements you must construct a list from them (explained later on)
+want multiple statements you must construct a list from them. As an example, below is a 
+simple programs that prints fibonacci numbers every half-second until it overflows and 
+crashes the interpreter (also exists as a separate file called `programs/fib2.bl`).
+```
+([
+  (def n1 0u)
+  (def n2 1u)
+  (def tmp 0u)
+
+  (write n1)
+  (write n2)
+
+  (while true [
+    (set tmp n1)
+    (set n1 n2)
+    (set n2 (+ n2 tmp))
+
+    (write n2)
+
+    (sleep 500)
+  ])
+])
+```
 
 ## Types
 I want this language to have a strict type system, analogous to Haskell or Rust. The types 

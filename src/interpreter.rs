@@ -789,7 +789,7 @@ fn eval_special_arg(node: Node) -> InterpreteResult<Argument> {
 }
 
 // For now a while statement never has a value, may add `break` in the future
-fn eval_while_loop<R, W>(args_node: Node, state: &mut State<R, W>) -> InterpreteResult<()>
+fn eval_while_loop<R, W>(args_node: Node, state: &mut State<R, W>) -> InterpreteResult<Value>
 where
     R: Read,
     W: Write,
@@ -800,6 +800,11 @@ where
         let cond_node = arg_children.pop().unwrap();
         if let rule_node_pattern!(Val => val_node) = cond_node {
             let val = eval_val_node(val_node.clone(), state)?;
+
+            if val.ty == AbstractType::Return {
+                return Ok(val);
+            }
+
             let mut cond = if val.ty == Type::Bool.into() {
                 val.try_as_bool()?
             } else {
@@ -809,7 +814,10 @@ where
             };
 
             while cond {
-                eval_args_node(body.clone(), state, 0)?;
+                let arg_val = eval_args_node(body.clone(), state, 0)?.pop().unwrap();
+                if arg_val.is_val() && arg_val.try_get_val_type()? == AbstractType::Return {
+                    return Ok(arg_val.try_get_val()?.clone());
+                }
 
                 // Recalculate the condition in case one of its values has
                 // changed
@@ -823,8 +831,8 @@ where
                 }
             }
 
-            // Always return () from loop
-            Ok(())
+            // Loop evaluates to () unless Return statement found
+            Ok(().into())
         } else {
             Err(format!("Expected Val node, found: {:?}", cond_node).into())
         }

@@ -7,6 +7,13 @@ BLisp used to be hosted in
 [my interprete-rs repository](https://github.com/DylanBulfin/interprete-rs). Any history 
 before this repo's original commit can be found there. 
 
+## Video Demos
+[Fibonacci Numbers](https://youtu.be/RFbHk7YyA7k)
+
+[Collatz Conjecture](https://youtu.be/3Ggrh42FM7c)
+
+For notes on the Collatz conjecture demo see the Example Programs section below.
+
 ## Status
 I believe it is complete with regards to core implementation. I have gotten it working on
 simple but non-trivial programs such as `fib2.bl` and `fib.bl`. I will fix issues that
@@ -41,11 +48,13 @@ E.g. `(add [a b c] [d e f] = ([(+ a d) (+ b e) (+ c f)])`.
 
 ## Example Programs
 Each BLisp program is a single lisp statement, which simplifies the control flow. If you 
-want multiple statements you must construct a list from them. As an example, below is a 
-simple programs that prints fibonacci numbers every half-second until it overflows and 
-crashes the interpreter (also exists as a separate file called `programs/fib2.bl`).
+want multiple statements you must construct a list from them. 
+
 
 ### Fibonacci
+As an example, below is a simple programs that prints fibonacci numbers every half-second 
+until it overflows and crashes the interpreter (also exists as a separate file called 
+`programs/fib2.bl`).
 ```
 ([
   (def n1 0u)
@@ -75,11 +84,36 @@ you apply the following rules to any positive integer repeatedly, you'll eventua
 - If n is odd, set `n = (3 * n) + 1`
 
 The number of steps it takes an integer to reach `1` has been researched in-depth, and
-OEIS has the first 100 values [on its site](https://oeis.org/A006577). Below is a program
-that calculates and prints the values for each of the first 100 numbers (I've verified
+OEIS has the first 72 values [on its site](https://oeis.org/A006577). Below is a program
+that calculates and prints the values for each of the first 72 integers (I've verified
 that they match.). This file is also at `programs/collatz.bl`
 ```
+([
+  (init cnt uint)
+  (init tmp uint)
+  (def curr 1u)
 
+  (while (le curr 72) [
+    (set cnt 0u)
+    (set tmp curr)
+    
+    (while (ne tmp 1) [
+      (set cnt (+ cnt 1))
+      (if (eq tmp (* 2 (/ tmp 2)))
+        (set tmp (/ tmp 2))
+        (set tmp (+ 1 (* 3 tmp)))
+      )
+    ])
+
+    (write (concat "Steps for " (concat (tostring curr) ": ")))
+    (write cnt)
+    (write ())
+
+    (set curr (+ curr 1))
+
+    (sleep 100)
+  ])
+])
 ```
 
 ## Types

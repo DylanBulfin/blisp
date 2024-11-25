@@ -1,0 +1,26 @@
+([
+  (init cnt uint)
+  (init tmp uint)
+  (def curr 1u)
+
+  (while (le curr 72) [
+    (set cnt 0u)
+    (set tmp curr)
+    
+    (while (ne tmp 1) [
+      (set cnt (+ cnt 1))
+      (if (eq tmp (* 2 (/ tmp 2)))
+        (set tmp (/ tmp 2))
+        (set tmp (+ 1 (* 3 tmp)))
+      )
+    ])
+
+    (write (concat "Steps for " (concat (tostring curr) ": ")))
+    (write cnt)
+    (write ())
+
+    (set curr (+ curr 1))
+
+    (sleep 100)
+  ])
+])

@@ -391,7 +391,7 @@ impl Display for Value {
             ValueData::Float(x) => f.write_fmt(format_args!("{}", x)),
             ValueData::Bool(b) => f.write_fmt(format_args!("{}", b)),
             ValueData::Char(c) => f.write_fmt(format_args!("'{}'", *c as char)),
-            ValueData::Unit => f.write_str("()"),
+            ValueData::Unit => f.write_str(""),
             ValueData::List(v) => {
                 if self.ty == Type::List(Box::new(Type::Char)).into() {
                     let s = v
@@ -402,7 +402,7 @@ impl Display for Value {
                                 as char
                         })
                         .collect::<String>();
-                    f.write_fmt(format_args!("\"{}\"", s))
+                    f.write_fmt(format_args!("{}", s))
                 } else {
                     let s = v
                         .iter()

@@ -39,12 +39,13 @@ E.g. `(add [a b c] [d e f] = ([(+ a d) (+ b e) (+ c f)])`.
     - Could also do `writeline` to mimic the current behavior and have `write` do a simple
     write
 
-
-## Control Flow
+## Example Programs
 Each BLisp program is a single lisp statement, which simplifies the control flow. If you 
 want multiple statements you must construct a list from them. As an example, below is a 
 simple programs that prints fibonacci numbers every half-second until it overflows and 
 crashes the interpreter (also exists as a separate file called `programs/fib2.bl`).
+
+### Fibonacci
 ```
 ([
   (def n1 0u)
@@ -64,6 +65,21 @@ crashes the interpreter (also exists as a separate file called `programs/fib2.bl
     (sleep 500)
   ])
 ])
+```
+
+### Collatz
+The [Collatz conjecture](https://en.wikipedia.org/wiki/Collatz_conjecture) states that if
+you apply the following rules to any positive integer repeatedly, you'll eventually reach
+1:
+- If n is even, set `n = n / 2`
+- If n is odd, set `n = (3 * n) + 1`
+
+The number of steps it takes an integer to reach `1` has been researched in-depth, and
+OEIS has the first 100 values [on its site](https://oeis.org/A006577). Below is a program
+that calculates and prints the values for each of the first 100 numbers (I've verified
+that they match.). This file is also at `programs/collatz.bl`
+```
+
 ```
 
 ## Types
